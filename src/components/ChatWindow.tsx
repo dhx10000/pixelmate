@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import StarterChips from "./StarterChips";
+import SummaryCard from "./SummaryCard";
 import VoiceInput, { type VoiceInputHandle } from "./VoiceInput";
 import {
   FileDropZone,
@@ -106,7 +107,7 @@ function UserMessage({ text }: { text: string }) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function ChatWindow() {
-  const { messages, isStreaming, showChips, sendMessage, dismissChips, analyzeFiles } =
+  const { messages, isStreaming, currentState, showChips, sendMessage, dismissChips, analyzeFiles } =
     useChatContext();
 
   const [input, setInput] = useState("");
@@ -219,6 +220,11 @@ export default function ChatWindow() {
             {showChips && !hasUserMessages && (
               <StarterChips onSelect={handleChipSelect} />
             )}
+
+            {currentState === "SUMMARY_REVIEW" && !isStreaming && (
+              <SummaryCard />
+            )}
+
             <div ref={bottomRef} />
           </div>
 

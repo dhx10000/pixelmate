@@ -29,12 +29,14 @@ type SSEEvent =
 type ChatContextValue = {
   sessionId: string;
   currentState: ConversationState;
+  agentOutputs: AgentOutputs;
   messages: Message[];
   isStreaming: boolean;
   showChips: boolean;
   dismissChips: () => void;
   sendMessage: (text: string) => void;
   analyzeFiles: (files: File[]) => void;
+  forceState: (state: ConversationState) => void;
 };
 
 // ── SSE helper ─────────────────────────────────────────────────────────────
@@ -201,6 +203,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const dismissChips = useCallback(() => setShowChips(false), []);
 
+  const forceState = useCallback((state: ConversationState) => {
+    currentStateRef.current = state;
+    setCurrentState(state);
+  }, []);
+
   const analyzeFiles = useCallback((files: File[]) => {
     if (files.length === 0) return;
 
@@ -285,12 +292,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       value={{
         sessionId,
         currentState,
+        agentOutputs,
         messages,
         isStreaming,
         showChips,
         sendMessage,
         dismissChips,
         analyzeFiles,
+        forceState,
       }}
     >
       {children}
