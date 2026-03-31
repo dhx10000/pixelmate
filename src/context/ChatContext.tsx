@@ -32,6 +32,7 @@ type ChatContextValue = {
   showChips: boolean;
   dismissChips: () => void;
   sendMessage: (text: string) => void;
+  analyzeFiles: (files: File[]) => void;
 };
 
 // ── SSE helper ─────────────────────────────────────────────────────────────
@@ -180,6 +181,78 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const dismissChips = useCallback(() => setShowChips(false), []);
 
+  const analyzeFiles = useCallback((files: File[]) => {
+    if (files.length === 0) return;
+
+    // Run async without blocking — state updates happen inside
+    (async () => {
+      setIsStreaming(true);
+      const botId = Date.now();
+      setMessages((prev) => [
+        ...prev,
+        { id: botId, role: "bot", text: "", streaming: true },
+      ]);
+
+      try {
+        const results: string[] = [];
+
+        for (const file of files) {
+          // 1. Upload
+          const form = new FormData();
+          form.append("file", file);
+          const upRes = await fetch("/api/files/upload", {
+            method: "POST",
+            body: form,
+          });
+          if (!upRes.ok) {
+            const { error } = await upRes.json();
+            results.push(`**${file.name}** — upload failed: ${error}`);
+            continue;
+          }
+          const { file_id, ext, filename, type } = await upRes.json();
+
+          // 2. Analyze
+          const anRes = await fetch("/api/files/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ file_id, ext, filename, type }),
+          });
+          if (!anRes.ok) {
+            const { error } = await anRes.json();
+            results.push(`**${file.name}** — analysis failed: ${error}`);
+            continue;
+          }
+          const { summary, questions } = await anRes.json();
+          const qs = (questions as string[]).map((q, i) => `${i + 1}. ${q}`).join("\n");
+          results.push(`**${filename}**\n${summary}\n\n${qs}`);
+        }
+
+        const fullText =
+          (files.length > 1 ? "I've reviewed your files:\n\n" : "I've reviewed your file.\n\n") +
+          results.join("\n\n---\n\n");
+
+        setMessages((prev) =>
+          prev.map((m) => (m.id === botId ? { ...m, text: fullText } : m))
+        );
+        setCurrentState("FILE_REVIEW");
+      } catch (err) {
+        const errText = err instanceof Error ? err.message : "Something went wrong.";
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === botId
+              ? { ...m, text: `Sorry, I couldn't analyse the file(s): ${errText}` }
+              : m
+          )
+        );
+      } finally {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === botId ? { ...m, streaming: false } : m))
+        );
+        setIsStreaming(false);
+      }
+    })();
+  }, []);
+
   return (
     <ChatContext.Provider
       value={{
@@ -190,6 +263,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         showChips,
         sendMessage,
         dismissChips,
+        analyzeFiles,
       }}
     >
       {children}

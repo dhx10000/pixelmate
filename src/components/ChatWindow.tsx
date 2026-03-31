@@ -106,7 +106,7 @@ function UserMessage({ text }: { text: string }) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function ChatWindow() {
-  const { messages, isStreaming, showChips, sendMessage, dismissChips } =
+  const { messages, isStreaming, showChips, sendMessage, dismissChips, analyzeFiles } =
     useChatContext();
 
   const [input, setInput] = useState("");
@@ -123,12 +123,18 @@ export default function ChatWindow() {
   }, [messages, isStreaming]);
 
   const handleNewFiles = useCallback((files: File[]) => {
+    const newFiles: File[] = [];
     setUploadedFiles((prev) => {
-      // Deduplicate by name+size
       const existing = new Set(prev.map((f) => `${f.name}-${f.size}`));
-      return [...prev, ...files.filter((f) => !existing.has(`${f.name}-${f.size}`))];
+      const deduped = files.filter((f) => !existing.has(`${f.name}-${f.size}`));
+      newFiles.push(...deduped);
+      return [...prev, ...deduped];
     });
-  }, []);
+    // Trigger analysis after dedup — runs after state update settles
+    setTimeout(() => {
+      if (newFiles.length > 0) analyzeFiles(newFiles);
+    }, 0);
+  }, [analyzeFiles]);
 
   function removeFile(index: number) {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
