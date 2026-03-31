@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { ConversationState } from "@/lib/stateMachine";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -18,8 +19,14 @@ export type Message = {
   streaming?: boolean;
 };
 
+// Discriminated union yielded by the SSE parser
+type SSEEvent =
+  | { type: "text"; text: string }
+  | { type: "state"; state: ConversationState };
+
 type ChatContextValue = {
   sessionId: string;
+  currentState: ConversationState;
   messages: Message[];
   isStreaming: boolean;
   showChips: boolean;
@@ -31,7 +38,7 @@ type ChatContextValue = {
 
 async function* readSSEStream(
   reader: ReadableStreamDefaultReader<Uint8Array>
-): AsyncGenerator<string> {
+): AsyncGenerator<SSEEvent> {
   const decoder = new TextDecoder();
   let buffer = "";
 
@@ -47,10 +54,15 @@ async function* readSSEStream(
       if (!line.startsWith("data: ")) continue;
       const payload = line.slice(6).trim();
       if (payload === "[DONE]") return;
+
       try {
         const parsed = JSON.parse(payload);
         if (parsed.error) throw new Error(parsed.error);
-        if (typeof parsed.text === "string") yield parsed.text;
+        if (typeof parsed.text === "string") {
+          yield { type: "text", text: parsed.text };
+        } else if (typeof parsed.state === "string") {
+          yield { type: "state", state: parsed.state as ConversationState };
+        }
       } catch {
         // malformed chunk — skip
       }
@@ -72,21 +84,27 @@ const ChatContext = createContext<ChatContextValue | null>(null);
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [sessionId] = useState<string>(() => crypto.randomUUID());
+  const [currentState, setCurrentState] = useState<ConversationState>("WELCOME");
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [showChips, setShowChips] = useState(true);
 
-  // Keep a stable ref to isStreaming so the async streamBotReply closure
-  // always sees the latest value without needing it as a dependency.
+  // Stable ref so the async closure always sees the latest values
   const isStreamingRef = useRef(false);
+  const currentStateRef = useRef<ConversationState>("WELCOME");
+
   useEffect(() => {
     isStreamingRef.current = isStreaming;
   }, [isStreaming]);
 
+  useEffect(() => {
+    currentStateRef.current = currentState;
+  }, [currentState]);
+
   const streamBotReply = useCallback(
     async (history: Message[], sid: string) => {
-      // Skip the welcome message (id 0) — it's UI-only, not part of the API conversation.
-      // Anthropic requires messages to start with "user", so this keeps the history valid.
+      // Build API payload — skip the welcome message (UI-only).
+      // Anthropic requires messages to start with "user".
       const apiMessages = history
         .filter((m) => m.id !== 0)
         .map((m) => ({
@@ -106,18 +124,26 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: apiMessages, sessionId: sid }),
+          body: JSON.stringify({
+            messages: apiMessages,
+            sessionId: sid,
+            currentState: currentStateRef.current,
+          }),
         });
 
         if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
         const reader = res.body.getReader();
-        for await (const chunk of readSSEStream(reader)) {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === botId ? { ...m, text: m.text + chunk } : m
-            )
-          );
+        for await (const event of readSSEStream(reader)) {
+          if (event.type === "text") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === botId ? { ...m, text: m.text + event.text } : m
+              )
+            );
+          } else if (event.type === "state") {
+            setCurrentState(event.state);
+          }
         }
       } catch (err) {
         const errText =
@@ -156,7 +182,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ChatContext.Provider
-      value={{ sessionId, messages, isStreaming, showChips, sendMessage, dismissChips }}
+      value={{
+        sessionId,
+        currentState,
+        messages,
+        isStreaming,
+        showChips,
+        sendMessage,
+        dismissChips,
+      }}
     >
       {children}
     </ChatContext.Provider>
