@@ -7,34 +7,15 @@ import StarterChips from "./StarterChips";
 
 function SparkleIcon() {
   return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M8 1.5L9.2 6.8L14.5 8L9.2 9.2L8 14.5L6.8 9.2L1.5 8L6.8 6.8L8 1.5Z"
-        fill="#0A0A0C"
-      />
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 1.5L9.2 6.8L14.5 8L9.2 9.2L8 14.5L6.8 9.2L1.5 8L6.8 6.8L8 1.5Z" fill="#0A0A0C" />
     </svg>
   );
 }
 
 function MicIcon() {
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <rect x="9" y="2" width="6" height="11" rx="3" />
       <path d="M5 10a7 7 0 0 0 14 0" />
       <line x1="12" y1="19" x2="12" y2="22" />
@@ -45,17 +26,7 @@ function MicIcon() {
 
 function PaperclipIcon() {
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M21.44 11.05L12.25 20.24a6 6 0 0 1-8.49-8.49L14.5 1.01a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48" />
     </svg>
   );
@@ -63,17 +34,7 @@ function PaperclipIcon() {
 
 function SendIcon() {
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <line x1="22" y1="2" x2="11" y2="13" />
       <polygon points="22 2 15 22 11 13 2 9 22 2" />
     </svg>
@@ -86,17 +47,39 @@ type Message = {
   id: number;
   role: "bot" | "user";
   text: string;
+  streaming?: boolean;
 };
 
 // ── Subcomponents ──────────────────────────────────────────────────────────
 
 function BotAvatar() {
   return (
-    <div
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent"
-      aria-hidden="true"
-    >
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent" aria-hidden="true">
       <SparkleIcon />
+    </div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div className="flex items-start gap-3">
+      <BotAvatar />
+      <div
+        className="flex items-center gap-1.5 rounded-2xl rounded-tl-sm px-4 py-3.5"
+        style={{ background: "#18181C" }}
+        aria-label="PixelMate is typing"
+      >
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="block h-1.5 w-1.5 rounded-full bg-text-muted"
+            style={{
+              animation: "pixelmate-pulse 1.2s ease-in-out infinite",
+              animationDelay: `${i * 0.2}s`,
+            }}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -119,8 +102,13 @@ function UserMessage({ text }: { text: string }) {
   return (
     <div className="flex justify-end">
       <div
-        className="rounded-2xl rounded-tr-sm px-4 py-3 text-sm leading-relaxed text-bg-deep font-medium"
-        style={{ background: "#C8F560", maxWidth: "80%" }}
+        className="rounded-2xl rounded-tr-sm px-4 py-3 text-sm leading-relaxed font-medium"
+        style={{
+          background: "rgba(200,245,96,0.12)",
+          border: "1px solid rgba(200,245,96,0.2)",
+          color: "#E8E4DD",
+          maxWidth: "80%",
+        }}
       >
         {text}
       </div>
@@ -128,7 +116,39 @@ function UserMessage({ text }: { text: string }) {
   );
 }
 
-// ── Main component ─────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+// Parse an SSE line buffer into text chunks; returns accumulated text delta
+async function* readSSEStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>
+): AsyncGenerator<string> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const payload = line.slice(6).trim();
+      if (payload === "[DONE]") return;
+      try {
+        const parsed = JSON.parse(payload);
+        if (parsed.error) throw new Error(parsed.error);
+        if (typeof parsed.text === "string") yield parsed.text;
+      } catch {
+        // malformed chunk — skip
+      }
+    }
+  }
+}
+
+// ── Constants ──────────────────────────────────────────────────────────────
 
 const WELCOME: Message = {
   id: 0,
@@ -136,35 +156,96 @@ const WELCOME: Message = {
   text: "Hi! I'm PixelMate — PIXEL's AI assistant. Tell me about the challenge your business is facing, or pick one of the options below to get started.",
 };
 
+// ── Main component ─────────────────────────────────────────────────────────
+
 export default function ChatWindow() {
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [showChips, setShowChips] = useState(true);
+  const [isStreaming, setIsStreaming] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const hasUserMessages = messages.some((m) => m.role === "user");
 
-  // Scroll to bottom whenever messages change
+  // Auto-scroll on every message state change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, isStreaming]);
 
-  function sendMessage(text: string) {
+  async function streamBotReply(history: Message[]) {
+    // Build API payload — skip the welcome message (UI-only), convert role names
+    const apiMessages = history
+      .filter((m) => m.id !== 0)
+      .map((m) => ({ role: m.role === "bot" ? "assistant" : "user", content: m.text }));
+
+    setIsStreaming(true);
+
+    // Add an empty streaming bot message
+    const botId = Date.now();
     setMessages((prev) => [
       ...prev,
-      { id: prev.length, role: "user", text },
+      { id: botId, role: "bot", text: "", streaming: true },
     ]);
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: apiMessages }),
+      });
+
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body.getReader();
+      for await (const chunk of readSSEStream(reader)) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === botId ? { ...m, text: m.text + chunk } : m
+          )
+        );
+      }
+    } catch (err) {
+      const errText = err instanceof Error ? err.message : "Something went wrong.";
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === botId
+            ? { ...m, text: `Sorry, I ran into an issue: ${errText}` }
+            : m
+        )
+      );
+    } finally {
+      // Mark streaming complete
+      setMessages((prev) =>
+        prev.map((m) => (m.id === botId ? { ...m, streaming: false } : m))
+      );
+      setIsStreaming(false);
+    }
+  }
+
+  function sendMessage(text: string) {
+    if (isStreaming) return;
+    const userMsg: Message = { id: Date.now(), role: "user", text };
+    setMessages((prev) => {
+      const next = [...prev, userMsg];
+      // Kick off the API call with the updated history
+      streamBotReply(next);
+      return next;
+    });
   }
 
   function handleSend() {
     const text = input.trim();
-    if (!text) return;
-    sendMessage(text);
+    if (!text || isStreaming) return;
     setInput("");
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+    sendMessage(text);
   }
 
   function handleChipSelect(text: string) {
-    // Chips animate out before this fires; hide after to avoid layout flash
     setShowChips(false);
     sendMessage(text);
   }
@@ -177,89 +258,109 @@ export default function ChatWindow() {
   }
 
   return (
-    <div
-      className="w-full mx-auto flex flex-col overflow-hidden"
-      style={{
-        maxWidth: 680,
-        background: "#111114",
-        border: "1px solid rgba(255,255,255,0.06)",
-        borderRadius: 20,
-      }}
-    >
-      {/* Message list */}
-      <div className="flex flex-col gap-4 overflow-y-auto px-5 py-6 flex-1 min-h-0" style={{ maxHeight: 420 }}>
-        {messages.map((msg) =>
-          msg.role === "bot" ? (
-            <BotMessage key={msg.id} text={msg.text} />
-          ) : (
-            <UserMessage key={msg.id} text={msg.text} />
-          )
-        )}
-        {showChips && !hasUserMessages && (
-          <StarterChips onSelect={handleChipSelect} />
-        )}
-        <div ref={bottomRef} />
-      </div>
+    <>
+      {/* Typing dot animation — injected once */}
+      <style>{`
+        @keyframes pixelmate-pulse {
+          0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+          40% { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
 
-      {/* Divider */}
-      <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
-
-      {/* Input bar */}
-      <div className="px-4 py-4">
+      <div
+        className="w-full mx-auto flex flex-col overflow-hidden"
+        style={{
+          maxWidth: 680,
+          background: "#111114",
+          border: "1px solid rgba(255,255,255,0.06)",
+          borderRadius: 20,
+        }}
+      >
+        {/* Message list */}
         <div
-          className="flex items-end gap-2 rounded-full px-4 py-2.5"
-          style={{
-            background: "#1E1E24",
-            border: "1px solid rgba(255,255,255,0.06)",
-          }}
+          className="flex flex-col gap-4 overflow-y-auto px-5 py-6"
+          style={{ maxHeight: 420 }}
         >
-          {/* Mic button */}
-          <button
-            type="button"
-            aria-label="Voice input"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:text-text-secondary"
-          >
-            <MicIcon />
-          </button>
+          {messages.map((msg) => {
+            // While the bot message is empty (waiting for first chunk), render
+            // the typing indicator in its place instead of an invisible bubble
+            if (msg.role === "bot" && msg.streaming && msg.text === "") {
+              return <TypingIndicator key={msg.id} />;
+            }
+            return msg.role === "bot" ? (
+              <BotMessage key={msg.id} text={msg.text} />
+            ) : (
+              <UserMessage key={msg.id} text={msg.text} />
+            );
+          })}
 
-          {/* Text input */}
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Tell me about your challenge..."
-            rows={1}
-            className="flex-1 resize-none bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none leading-relaxed py-1"
-            style={{ maxHeight: 120 }}
-            onInput={(e) => {
-              // Auto-grow textarea
-              const el = e.currentTarget;
-              el.style.height = "auto";
-              el.style.height = `${el.scrollHeight}px`;
+          {showChips && !hasUserMessages && (
+            <StarterChips onSelect={handleChipSelect} />
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Divider */}
+        <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
+
+        {/* Input bar */}
+        <div className="px-4 py-4">
+          <div
+            className="flex items-end gap-2 rounded-full px-4 py-2.5"
+            style={{
+              background: "#1E1E24",
+              border: "1px solid rgba(255,255,255,0.06)",
             }}
-          />
-
-          {/* Paperclip button */}
-          <button
-            type="button"
-            aria-label="Attach file"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:text-text-secondary"
           >
-            <PaperclipIcon />
-          </button>
+            {/* Mic button */}
+            <button
+              type="button"
+              aria-label="Voice input"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:text-text-secondary"
+            >
+              <MicIcon />
+            </button>
 
-          {/* Send button */}
-          <button
-            type="button"
-            aria-label="Send message"
-            onClick={handleSend}
-            disabled={!input.trim()}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-bg-deep transition-opacity disabled:opacity-30"
-          >
-            <SendIcon />
-          </button>
+            {/* Text input */}
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={isStreaming ? "PixelMate is thinking…" : "Tell me about your challenge..."}
+              disabled={isStreaming}
+              rows={1}
+              className="flex-1 resize-none bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none leading-relaxed py-1 disabled:cursor-not-allowed"
+              style={{ maxHeight: 120 }}
+              onInput={(e) => {
+                const el = e.currentTarget;
+                el.style.height = "auto";
+                el.style.height = `${el.scrollHeight}px`;
+              }}
+            />
+
+            {/* Paperclip button */}
+            <button
+              type="button"
+              aria-label="Attach file"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:text-text-secondary"
+            >
+              <PaperclipIcon />
+            </button>
+
+            {/* Send button */}
+            <button
+              type="button"
+              aria-label="Send message"
+              onClick={handleSend}
+              disabled={!input.trim() || isStreaming}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-bg-deep transition-opacity disabled:opacity-30"
+            >
+              <SendIcon />
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
