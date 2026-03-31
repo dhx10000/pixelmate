@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import StarterChips from "./StarterChips";
 import VoiceInput, { type VoiceInputHandle } from "./VoiceInput";
+import {
+  FileDropZone,
+  FilePreviewList,
+  type FileUploadHandle,
+} from "./FileUpload";
 import { useChatContext } from "@/context/ChatContext";
 
 // ── Icons ──────────────────────────────────────────────────────────────────
@@ -14,7 +19,6 @@ function SparkleIcon() {
     </svg>
   );
 }
-
 
 function PaperclipIcon() {
   return (
@@ -105,17 +109,30 @@ export default function ChatWindow() {
   const { messages, isStreaming, showChips, sendMessage, dismissChips } =
     useChatContext();
 
-  // Local UI state — not shared, doesn't belong in context
   const [input, setInput] = useState("");
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const voiceRef = useRef<VoiceInputHandle>(null);
+  const fileRef = useRef<FileUploadHandle>(null);
 
   const hasUserMessages = messages.some((m) => m.role === "user");
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isStreaming]);
+
+  const handleNewFiles = useCallback((files: File[]) => {
+    setUploadedFiles((prev) => {
+      // Deduplicate by name+size
+      const existing = new Set(prev.map((f) => `${f.name}-${f.size}`));
+      return [...prev, ...files.filter((f) => !existing.has(`${f.name}-${f.size}`))];
+    });
+  }, []);
+
+  function removeFile(index: number) {
+    setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
+  }
 
   function handleSend() {
     const text = input.trim();
@@ -127,7 +144,6 @@ export default function ChatWindow() {
 
   function handleTranscript(text: string) {
     setInput(text);
-    // Sync textarea height after programmatic value change
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
@@ -139,6 +155,10 @@ export default function ChatWindow() {
     dismissChips();
     if (text === "Record voice") {
       voiceRef.current?.start();
+      return;
+    }
+    if (text === "Upload files") {
+      fileRef.current?.open();
       return;
     }
     sendMessage(text);
@@ -160,92 +180,122 @@ export default function ChatWindow() {
         }
       `}</style>
 
-      <div
-        className="w-full mx-auto flex flex-col overflow-hidden"
-        style={{
-          maxWidth: 680,
-          background: "#111114",
-          border: "1px solid rgba(255,255,255,0.06)",
-          borderRadius: 20,
-        }}
+      {/* FileDropZone wraps the whole chat card so drag works over all of it */}
+      <FileDropZone
+        ref={fileRef}
+        onFiles={handleNewFiles}
       >
-        {/* Message list */}
         <div
-          className="flex flex-col gap-4 overflow-y-auto px-5 py-6"
-          style={{ maxHeight: 420 }}
+          className="w-full mx-auto flex flex-col overflow-hidden"
+          style={{
+            maxWidth: 680,
+            background: "#111114",
+            border: "1px solid rgba(255,255,255,0.06)",
+            borderRadius: 20,
+          }}
         >
-          {messages.map((msg) => {
-            if (msg.role === "bot" && msg.streaming && msg.text === "") {
-              return <TypingIndicator key={msg.id} />;
-            }
-            return msg.role === "bot" ? (
-              <BotMessage key={msg.id} text={msg.text} />
-            ) : (
-              <UserMessage key={msg.id} text={msg.text} />
-            );
-          })}
-
-          {showChips && !hasUserMessages && (
-            <StarterChips onSelect={handleChipSelect} />
-          )}
-          <div ref={bottomRef} />
-        </div>
-
-        {/* Divider */}
-        <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
-
-        {/* Input bar */}
-        <div className="px-4 py-4">
+          {/* Message list */}
           <div
-            className="flex items-end gap-2 rounded-full px-4 py-2.5"
-            style={{
-              background: "#1E1E24",
-              border: "1px solid rgba(255,255,255,0.06)",
-            }}
+            className="flex flex-col gap-4 overflow-y-auto px-5 py-6"
+            style={{ maxHeight: 420 }}
           >
-            <VoiceInput
-              ref={voiceRef}
-              onTranscript={handleTranscript}
-              disabled={isStreaming}
-            />
+            {messages.map((msg) => {
+              if (msg.role === "bot" && msg.streaming && msg.text === "") {
+                return <TypingIndicator key={msg.id} />;
+              }
+              return msg.role === "bot" ? (
+                <BotMessage key={msg.id} text={msg.text} />
+              ) : (
+                <UserMessage key={msg.id} text={msg.text} />
+              );
+            })}
 
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={isStreaming ? "PixelMate is thinking…" : "Tell me about your challenge..."}
-              disabled={isStreaming}
-              rows={1}
-              className="flex-1 resize-none bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none leading-relaxed py-1 disabled:cursor-not-allowed"
-              style={{ maxHeight: 120 }}
-              onInput={(e) => {
-                const el = e.currentTarget;
-                el.style.height = "auto";
-                el.style.height = `${el.scrollHeight}px`;
+            {showChips && !hasUserMessages && (
+              <StarterChips onSelect={handleChipSelect} />
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          {/* File preview cards — shown between messages and input bar */}
+          <FilePreviewList files={uploadedFiles} onRemove={removeFile} />
+
+          {/* Divider */}
+          <div
+            className={uploadedFiles.length > 0 ? "mt-3" : ""}
+            style={{ height: 1, background: "rgba(255,255,255,0.06)" }}
+          />
+
+          {/* Input bar */}
+          <div className="px-4 py-4">
+            <div
+              className="flex items-end gap-2 rounded-full px-4 py-2.5"
+              style={{
+                background: "#1E1E24",
+                border: "1px solid rgba(255,255,255,0.06)",
               }}
-            />
-
-            <button
-              type="button"
-              aria-label="Attach file"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:text-text-secondary"
             >
-              <PaperclipIcon />
-            </button>
+              <VoiceInput
+                ref={voiceRef}
+                onTranscript={handleTranscript}
+                disabled={isStreaming}
+              />
 
-            <button
-              type="button"
-              aria-label="Send message"
-              onClick={handleSend}
-              disabled={!input.trim() || isStreaming}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-bg-deep transition-opacity disabled:opacity-30"
-            >
-              <SendIcon />
-            </button>
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  isStreaming
+                    ? "PixelMate is thinking…"
+                    : "Tell me about your challenge..."
+                }
+                disabled={isStreaming}
+                rows={1}
+                className="flex-1 resize-none bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none leading-relaxed py-1 disabled:cursor-not-allowed"
+                style={{ maxHeight: 120 }}
+                onInput={(e) => {
+                  const el = e.currentTarget;
+                  el.style.height = "auto";
+                  el.style.height = `${el.scrollHeight}px`;
+                }}
+              />
+
+              {/* Paperclip — opens file picker */}
+              <button
+                type="button"
+                aria-label="Attach file"
+                onClick={() => fileRef.current?.open()}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors"
+                style={{
+                  color:
+                    uploadedFiles.length > 0 ? "#C8F560" : undefined,
+                }}
+              >
+                <span
+                  className={
+                    uploadedFiles.length > 0
+                      ? ""
+                      : "text-text-muted hover:text-text-secondary transition-colors"
+                  }
+                >
+                  <PaperclipIcon />
+                </span>
+              </button>
+
+              <button
+                type="button"
+                aria-label="Send message"
+                onClick={handleSend}
+                disabled={!input.trim() || isStreaming}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-bg-deep transition-opacity disabled:opacity-30"
+              >
+                <SendIcon />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </FileDropZone>
     </>
   );
 }
