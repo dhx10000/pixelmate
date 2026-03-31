@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import StarterChips from "./StarterChips";
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 
@@ -138,22 +139,34 @@ const WELCOME: Message = {
 export default function ChatWindow() {
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState("");
+  const [showChips, setShowChips] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const hasUserMessages = messages.some((m) => m.role === "user");
 
   // Scroll to bottom whenever messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  function handleSend() {
-    const text = input.trim();
-    if (!text) return;
-
+  function sendMessage(text: string) {
     setMessages((prev) => [
       ...prev,
       { id: prev.length, role: "user", text },
     ]);
+  }
+
+  function handleSend() {
+    const text = input.trim();
+    if (!text) return;
+    sendMessage(text);
     setInput("");
+  }
+
+  function handleChipSelect(text: string) {
+    // Chips animate out before this fires; hide after to avoid layout flash
+    setShowChips(false);
+    sendMessage(text);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -181,6 +194,9 @@ export default function ChatWindow() {
           ) : (
             <UserMessage key={msg.id} text={msg.text} />
           )
+        )}
+        {showChips && !hasUserMessages && (
+          <StarterChips onSelect={handleChipSelect} />
         )}
         <div ref={bottomRef} />
       </div>
