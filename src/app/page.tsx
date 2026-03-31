@@ -1,5 +1,6 @@
 import Hero from "@/components/Hero";
 import ChatWindow from "@/components/ChatWindow";
+import ProgressBar from "@/components/ProgressBar";
 import { ChatProvider } from "@/context/ChatContext";
 
 export default function Home() {
@@ -30,6 +31,7 @@ export default function Home() {
       <ChatProvider>
         <main className="flex w-full flex-col items-center flex-1 px-4">
           <Hero />
+          <ProgressBar />
           <ChatWindow />
         </main>
       </ChatProvider>
