@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import type { ConversationState } from "@/lib/stateMachine";
+import type { AgentOutputs } from "@/lib/agents/types";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -22,7 +23,8 @@ export type Message = {
 // Discriminated union yielded by the SSE parser
 type SSEEvent =
   | { type: "text"; text: string }
-  | { type: "state"; state: ConversationState };
+  | { type: "state"; state: ConversationState }
+  | { type: "agents"; agents: AgentOutputs };
 
 type ChatContextValue = {
   sessionId: string;
@@ -63,6 +65,8 @@ async function* readSSEStream(
           yield { type: "text", text: parsed.text };
         } else if (typeof parsed.state === "string") {
           yield { type: "state", state: parsed.state as ConversationState };
+        } else if (parsed.agents && typeof parsed.agents === "object") {
+          yield { type: "agents", agents: parsed.agents as AgentOutputs };
         }
       } catch {
         // malformed chunk — skip
@@ -89,10 +93,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [showChips, setShowChips] = useState(true);
+  const [agentOutputs, setAgentOutputs] = useState<AgentOutputs>({});
+  const [fileSummaries, setFileSummaries] = useState<string[]>([]);
 
-  // Stable ref so the async closure always sees the latest values
+  // Stable refs so async closures always see the latest values
   const isStreamingRef = useRef(false);
   const currentStateRef = useRef<ConversationState>("WELCOME");
+  const agentOutputsRef = useRef<AgentOutputs>({});
+  const fileSummariesRef = useRef<string[]>([]);
 
   useEffect(() => {
     isStreamingRef.current = isStreaming;
@@ -101,6 +109,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     currentStateRef.current = currentState;
   }, [currentState]);
+
+  useEffect(() => {
+    agentOutputsRef.current = agentOutputs;
+  }, [agentOutputs]);
+
+  useEffect(() => {
+    fileSummariesRef.current = fileSummaries;
+  }, [fileSummaries]);
 
   const streamBotReply = useCallback(
     async (history: Message[], sid: string) => {
@@ -129,6 +145,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             messages: apiMessages,
             sessionId: sid,
             currentState: currentStateRef.current,
+            agentOutputs: agentOutputsRef.current,
+            fileSummaries: fileSummariesRef.current,
           }),
         });
 
@@ -144,6 +162,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             );
           } else if (event.type === "state") {
             setCurrentState(event.state);
+          } else if (event.type === "agents") {
+            setAgentOutputs(event.agents);
           }
         }
       } catch (err) {
@@ -195,6 +215,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const results: string[] = [];
+        const newSummaries: string[] = [];
 
         for (const file of files) {
           // 1. Upload
@@ -225,6 +246,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           const { summary, questions } = await anRes.json();
           const qs = (questions as string[]).map((q, i) => `${i + 1}. ${q}`).join("\n");
           results.push(`**${filename}**\n${summary}\n\n${qs}`);
+          newSummaries.push(`${filename}: ${summary}`);
+        }
+
+        // Accumulate file summaries for agent context
+        if (newSummaries.length > 0) {
+          setFileSummaries((prev) => [...prev, ...newSummaries]);
         }
 
         const fullText =

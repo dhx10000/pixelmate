@@ -5,16 +5,29 @@ import {
   getNextState,
   STATE_META,
 } from "@/lib/stateMachine";
+import { extractBusinessBrief } from "@/lib/agents/businessAnalyst";
+import { matchServices } from "@/lib/agents/serviceMatcher";
+import { validatePackage } from "@/lib/agents/validator";
+import type { AgentOutputs } from "@/lib/agents/types";
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const BASE_SYSTEM_PROMPT = `You are PixelMate, the user-facing AI assistant for PIXEL. You act as a business analyst and pre-sales guide in a simple, calm, human way. Your goal is to understand the user's business need and help prepare a useful brief for the PIXEL team.
+// ── Base system prompt ─────────────────────────────────────────────────────
 
-Tone: clear, calm, respectful, concise, non-pushy, easy for non-experts.
-
-Rules: Ask short, simple questions. Usually ask one question at a time. Use buttons/options when helpful. Stay only within PIXEL-related topics: branding, websites, landing pages, digital products, AI assistants, automation, offer clarity, customer experience, and related strategy. If the user asks for something outside scope, gently redirect. Do not invent answers. If information is missing, say so clearly. If a precise answer requires human review, say that the PIXEL team will prepare it. After enough context is collected, summarize what you understood and ask for contact details.`;
+const BASE_SYSTEM_PROMPT =
+  `You are PixelMate, the user-facing AI assistant for PIXEL. You act as a ` +
+  `business analyst and pre-sales guide in a simple, calm, human way. Your goal ` +
+  `is to understand the user's business need and help prepare a useful brief for ` +
+  `the PIXEL team.\n\n` +
+  `Tone: clear, calm, respectful, concise, non-pushy, easy for non-experts.\n\n` +
+  `Rules: Ask short, simple questions. Usually ask one question at a time. Use ` +
+  `buttons/options when helpful. Stay only within PIXEL-related topics: branding, ` +
+  `websites, landing pages, digital products, AI assistants, automation, offer ` +
+  `clarity, customer experience, and related strategy. If the user asks for ` +
+  `something outside scope, gently redirect. Do not invent answers. If information ` +
+  `is missing, say so clearly. If a precise answer requires human review, say that ` +
+  `the PIXEL team will prepare it. After enough context is collected, summarize ` +
+  `what you understood and ask for contact details.`;
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -24,9 +37,6 @@ type ChatMessage = {
 };
 
 // ── Context derivation ─────────────────────────────────────────────────────
-//
-// Extracts signals from the conversation history to drive state transitions.
-// Uses pattern matching — no extra API call needed.
 
 function deriveContext(
   messages: ChatMessage[],
@@ -50,10 +60,8 @@ function deriveContext(
       /\b(file|upload|attachment|pdf|doc|image|logo|website|url|link|existing|brand|material)\b/i.test(
         allText
       ),
-    // No file upload UI yet — always false until that feature ships
     filesUploaded: false,
-    contactCaptured:
-      /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/i.test(allText),
+    contactCaptured: /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/i.test(allText),
     needsHumanHandoff:
       /\b(speak to (a |someone|a human|the team)|real person|escalate|can'?t help|cannot help)\b/i.test(
         lastUserMsg
@@ -70,15 +78,109 @@ function deriveContext(
 
 // ── System prompt builder ──────────────────────────────────────────────────
 //
-// Appends the current stage so the model knows where it is in the flow.
+// Injects agent intelligence as an internal reference section.
+// The instruction "do not read aloud" prevents Claude from reciting the
+// JSON directly — it uses it to inform tone, depth, and what to ask next.
 
-function buildSystemPrompt(state: ConversationState): string {
+function buildSystemPrompt(
+  state: ConversationState,
+  agents: AgentOutputs
+): string {
   const meta = STATE_META[state];
-  return (
-    BASE_SYSTEM_PROMPT +
+  const stageLine =
     `\n\nCurrent conversation stage: ${meta.label} — ${meta.description} ` +
-    `Adjust your questions and depth accordingly.`
-  );
+    `Adjust your questions and depth accordingly.`;
+
+  const sections: string[] = [];
+
+  if (agents.brief && agents.brief.current_problem !== "UNKNOWN") {
+    const b = agents.brief;
+    sections.push(
+      `### Business Analysis\n` +
+        `Business type: ${b.business_type}\n` +
+        `Problem: ${b.current_problem}\n` +
+        `Desired outcome: ${b.desired_outcome}\n` +
+        `Audience: ${b.target_audience}\n` +
+        `Urgency: ${b.urgency}\n` +
+        `Assets on hand: ${b.current_assets.join(", ") || "none mentioned"}\n` +
+        `Constraints: ${b.constraints.join(", ") || "none mentioned"}\n` +
+        `Still unknown: ${b.unknowns.join(", ") || "none"}`
+    );
+  }
+
+  if (agents.services?.top_match) {
+    const top = agents.services.matches[0];
+    sections.push(
+      `### Recommended Service\n` +
+        `Match: ${agents.services.top_match}\n` +
+        `Rationale: ${top.why_it_matches}\n` +
+        `Confidence: ${(top.confidence * 100).toFixed(0)}%\n` +
+        `Still needed to confirm: ${top.what_is_missing}`
+    );
+  }
+
+  if (agents.validation) {
+    const v = agents.validation;
+    const safeLabel = v.safe_to_send_to_user
+      ? "YES — you may present the summary"
+      : "NO — continue gathering information before summarising";
+    const missing =
+      v.missing_required_fields.length > 0
+        ? `\nMissing required fields: ${v.missing_required_fields.join(", ")}`
+        : "";
+    const flagged =
+      v.unsupported_claims.length > 0
+        ? `\nClaims to avoid (unsupported): ${v.unsupported_claims.join("; ")}`
+        : "";
+    sections.push(
+      `### Validation Status\nSafe to summarise: ${safeLabel}${missing}${flagged}`
+    );
+  }
+
+  const intelligenceBlock =
+    sections.length > 0
+      ? "\n\n---\n\n" +
+        "## Agent Intelligence (internal reference — do not read aloud or quote directly)\n\n" +
+        sections.join("\n\n")
+      : "";
+
+  return BASE_SYSTEM_PROMPT + stageLine + intelligenceBlock;
+}
+
+// ── Agent orchestration ────────────────────────────────────────────────────
+//
+// Runs silently before the stream opens. Returns an updated AgentOutputs
+// object — only the fields relevant to the current transition are changed.
+
+async function runAgents(
+  nextState: ConversationState,
+  messages: ChatMessage[],
+  fileSummaries: string[],
+  existing: AgentOutputs
+): Promise<AgentOutputs> {
+  const updated: AgentOutputs = { ...existing };
+
+  if (nextState === "SERVICE_MATCH") {
+    const brief = await extractBusinessBrief(messages, fileSummaries);
+    const services = await matchServices(brief);
+    updated.brief = brief;
+    updated.services = services;
+  }
+
+  if (nextState === "SUMMARY_REVIEW" && updated.brief && updated.services) {
+    const conversationExcerpt = messages
+      .map((m) => `${m.role}: ${m.content}`)
+      .join("\n");
+    const validation = await validatePackage({
+      brief: updated.brief,
+      serviceMatches: updated.services,
+      fileSummaries,
+      conversationExcerpt,
+    });
+    updated.validation = validation;
+  }
+
+  return updated;
 }
 
 // ── Route handler ──────────────────────────────────────────────────────────
@@ -86,11 +188,15 @@ function buildSystemPrompt(state: ConversationState): string {
 export async function POST(request: Request) {
   let messages: ChatMessage[];
   let currentState: ConversationState;
+  let incomingAgents: AgentOutputs;
+  let fileSummaries: string[];
 
   try {
     const body = await request.json();
     messages = body.messages;
     currentState = (body.currentState as ConversationState) ?? "WELCOME";
+    incomingAgents = (body.agentOutputs as AgentOutputs) ?? {};
+    fileSummaries = Array.isArray(body.fileSummaries) ? body.fileSummaries : [];
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return Response.json(
@@ -102,9 +208,16 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  // Determine next state before streaming starts
   const context = deriveContext(messages, currentState);
   const nextState = getNextState(currentState, context);
+
+  // Run agents before streaming — their output shapes the system prompt
+  const agentOutputs = await runAgents(
+    nextState,
+    messages,
+    fileSummaries,
+    incomingAgents
+  );
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -118,7 +231,7 @@ export async function POST(request: Request) {
         const anthropicStream = client.messages.stream({
           model: "claude-sonnet-4-20250514",
           max_tokens: 1024,
-          system: buildSystemPrompt(nextState),
+          system: buildSystemPrompt(nextState, agentOutputs),
           messages,
         });
 
@@ -131,8 +244,9 @@ export async function POST(request: Request) {
           }
         }
 
-        // Send the resolved next state as the final payload before [DONE]
+        // Emit state and agent outputs as the final frames before [DONE]
         send(JSON.stringify({ state: nextState }));
+        send(JSON.stringify({ agents: agentOutputs }));
         send("[DONE]");
       } catch (err) {
         const message =
