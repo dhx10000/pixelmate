@@ -1,5 +1,6 @@
 import Hero from "@/components/Hero";
 import ChatWindow from "@/components/ChatWindow";
+import { ChatProvider } from "@/context/ChatContext";
 
 export default function Home() {
   return (
@@ -26,10 +27,12 @@ export default function Home() {
       </div>
 
       {/* Content */}
-      <main className="flex w-full flex-col items-center flex-1 px-4">
-        <Hero />
-        <ChatWindow />
-      </main>
+      <ChatProvider>
+        <main className="flex w-full flex-col items-center flex-1 px-4">
+          <Hero />
+          <ChatWindow />
+        </main>
+      </ChatProvider>
 
       {/* Footer */}
       <footer className="w-full py-8 flex justify-center">
