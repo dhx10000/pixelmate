@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import StarterChips from "./StarterChips";
 import SummaryCard from "./SummaryCard";
 import ContactForm from "./ContactForm";
+import OfferCard from "./OfferCard";
 import VoiceInput, { type VoiceInputHandle } from "./VoiceInput";
 import {
   FileDropZone,
@@ -108,7 +109,7 @@ function UserMessage({ text }: { text: string }) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function ChatWindow() {
-  const { messages, isStreaming, currentState, showChips, sendMessage, dismissChips, analyzeFiles } =
+  const { messages, isStreaming, currentState, agentOutputs, showChips, sendMessage, dismissChips, analyzeFiles } =
     useChatContext();
 
   const [input, setInput] = useState("");
@@ -229,6 +230,10 @@ export default function ChatWindow() {
             {currentState === "CONTACT_CAPTURE" && !isStreaming && (
               <ContactForm />
             )}
+
+            {(currentState === "OFFER_DRAFT" || currentState === "DONE") &&
+              !!agentOutputs.offer &&
+              !isStreaming && <OfferCard />}
 
             <div ref={bottomRef} />
           </div>

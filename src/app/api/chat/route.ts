@@ -150,9 +150,11 @@ function buildSystemPrompt(
       `### Draft Offer\n` +
         `Tier: ${tierLabel}\n` +
         `Validated: ${o.validated ? "yes" : "no — unsupported claims stripped"}\n\n` +
-        `Present this offer to the user. Do not paraphrase or add to it — ` +
-        `deliver the text below as your response, then invite any questions:\n\n` +
-        o.text
+        `The full offer has been displayed to the user in a formatted card below your message. ` +
+        `Write a warm 1–2 sentence introduction only (e.g. "Based on everything you've shared, ` +
+        `I've put together a draft brief for the PIXEL team."). ` +
+        `Do not repeat, summarise, or quote any part of the offer content — the card covers it. ` +
+        `After your intro, invite them to review the brief and hit 'Send to PIXEL team' when ready.`
     );
   }
 
