@@ -1,4 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
+
+export const maxDuration = 60;
 import {
   type ConversationState,
   type ConversationContext,
@@ -186,6 +188,9 @@ async function runAgents(
     const services = await matchServices(brief);
     updated.brief = brief;
     updated.services = services;
+    // Clear downstream outputs — they'll regenerate at their own transition steps
+    updated.validation = undefined;
+    updated.offer = undefined;
   }
 
   if (nextState === "SUMMARY_REVIEW" && updated.brief && updated.services) {

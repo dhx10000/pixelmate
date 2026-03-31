@@ -223,7 +223,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const submitContact = useCallback(
     (data: ContactData) => {
       setContactData(data);
-      // Build a readable summary so the bot has contact info in its history
+      // Build a readable summary so the bot has contact info in its history.
+      // Do NOT forceState here — let the server receive currentState="CONTACT_CAPTURE"
+      // so getNextState produces "OFFER_DRAFT" naturally, triggering runAgents to call
+      // draftOffer before the stream opens.
       const parts = [
         `Name: ${data.name}`,
         `Company: ${data.company_name}`,
@@ -232,10 +235,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         data.phone_or_messenger ? `Phone/Messenger: ${data.phone_or_messenger}` : null,
         data.website ? `Website: ${data.website}` : null,
       ].filter(Boolean);
-      forceState("OFFER_DRAFT");
       sendMessage(`Here are my contact details — ${parts.join(", ")}.`);
     },
-    [forceState, sendMessage]
+    [sendMessage]
   );
 
   const analyzeFiles = useCallback((files: File[]) => {
