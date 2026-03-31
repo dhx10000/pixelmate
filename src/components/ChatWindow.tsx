@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import StarterChips from "./StarterChips";
+import VoiceInput, { type VoiceInputHandle } from "./VoiceInput";
 import { useChatContext } from "@/context/ChatContext";
 
 // ── Icons ──────────────────────────────────────────────────────────────────
@@ -14,16 +15,6 @@ function SparkleIcon() {
   );
 }
 
-function MicIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="9" y="2" width="6" height="11" rx="3" />
-      <path d="M5 10a7 7 0 0 0 14 0" />
-      <line x1="12" y1="19" x2="12" y2="22" />
-      <line x1="9" y1="22" x2="15" y2="22" />
-    </svg>
-  );
-}
 
 function PaperclipIcon() {
   return (
@@ -118,6 +109,7 @@ export default function ChatWindow() {
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const voiceRef = useRef<VoiceInputHandle>(null);
 
   const hasUserMessages = messages.some((m) => m.role === "user");
 
@@ -133,8 +125,22 @@ export default function ChatWindow() {
     sendMessage(text);
   }
 
+  function handleTranscript(text: string) {
+    setInput(text);
+    // Sync textarea height after programmatic value change
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      textareaRef.current.focus();
+    }
+  }
+
   function handleChipSelect(text: string) {
     dismissChips();
+    if (text === "Record voice") {
+      voiceRef.current?.start();
+      return;
+    }
     sendMessage(text);
   }
 
@@ -197,13 +203,11 @@ export default function ChatWindow() {
               border: "1px solid rgba(255,255,255,0.06)",
             }}
           >
-            <button
-              type="button"
-              aria-label="Voice input"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:text-text-secondary"
-            >
-              <MicIcon />
-            </button>
+            <VoiceInput
+              ref={voiceRef}
+              onTranscript={handleTranscript}
+              disabled={isStreaming}
+            />
 
             <textarea
               ref={textareaRef}
