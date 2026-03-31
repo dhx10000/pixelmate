@@ -20,6 +20,15 @@ export type Message = {
   streaming?: boolean;
 };
 
+export type ContactData = {
+  name: string;
+  company_name: string;
+  role: string;
+  email: string;
+  phone_or_messenger: string;
+  website: string;
+};
+
 // Discriminated union yielded by the SSE parser
 type SSEEvent =
   | { type: "text"; text: string }
@@ -30,6 +39,7 @@ type ChatContextValue = {
   sessionId: string;
   currentState: ConversationState;
   agentOutputs: AgentOutputs;
+  contactData: ContactData | null;
   messages: Message[];
   isStreaming: boolean;
   showChips: boolean;
@@ -37,6 +47,7 @@ type ChatContextValue = {
   sendMessage: (text: string) => void;
   analyzeFiles: (files: File[]) => void;
   forceState: (state: ConversationState) => void;
+  submitContact: (data: ContactData) => void;
 };
 
 // ── SSE helper ─────────────────────────────────────────────────────────────
@@ -97,6 +108,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [showChips, setShowChips] = useState(true);
   const [agentOutputs, setAgentOutputs] = useState<AgentOutputs>({});
   const [fileSummaries, setFileSummaries] = useState<string[]>([]);
+  const [contactData, setContactData] = useState<ContactData | null>(null);
 
   // Stable refs so async closures always see the latest values
   const isStreamingRef = useRef(false);
@@ -208,6 +220,24 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setCurrentState(state);
   }, []);
 
+  const submitContact = useCallback(
+    (data: ContactData) => {
+      setContactData(data);
+      // Build a readable summary so the bot has contact info in its history
+      const parts = [
+        `Name: ${data.name}`,
+        `Company: ${data.company_name}`,
+        data.role ? `Role: ${data.role}` : null,
+        `Email: ${data.email}`,
+        data.phone_or_messenger ? `Phone/Messenger: ${data.phone_or_messenger}` : null,
+        data.website ? `Website: ${data.website}` : null,
+      ].filter(Boolean);
+      forceState("OFFER_DRAFT");
+      sendMessage(`Here are my contact details — ${parts.join(", ")}.`);
+    },
+    [forceState, sendMessage]
+  );
+
   const analyzeFiles = useCallback((files: File[]) => {
     if (files.length === 0) return;
 
@@ -293,6 +323,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         sessionId,
         currentState,
         agentOutputs,
+        contactData,
         messages,
         isStreaming,
         showChips,
@@ -300,6 +331,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         dismissChips,
         analyzeFiles,
         forceState,
+        submitContact,
       }}
     >
       {children}

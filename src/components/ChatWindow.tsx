@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import StarterChips from "./StarterChips";
 import SummaryCard from "./SummaryCard";
+import ContactForm from "./ContactForm";
 import VoiceInput, { type VoiceInputHandle } from "./VoiceInput";
 import {
   FileDropZone,
@@ -223,6 +224,10 @@ export default function ChatWindow() {
 
             {currentState === "SUMMARY_REVIEW" && !isStreaming && (
               <SummaryCard />
+            )}
+
+            {currentState === "CONTACT_CAPTURE" && !isStreaming && (
+              <ContactForm />
             )}
 
             <div ref={bottomRef} />
