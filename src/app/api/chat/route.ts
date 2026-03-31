@@ -8,6 +8,7 @@ import {
 import { extractBusinessBrief } from "@/lib/agents/businessAnalyst";
 import { matchServices } from "@/lib/agents/serviceMatcher";
 import { validatePackage } from "@/lib/agents/validator";
+import { draftOffer } from "@/lib/agents/offerDrafter";
 import type { AgentOutputs } from "@/lib/agents/types";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -137,6 +138,24 @@ function buildSystemPrompt(
     );
   }
 
+  if (agents.offer) {
+    const o = agents.offer;
+    const tierLabel =
+      o.tier === "full"
+        ? "Full draft offer (high confidence)"
+        : o.tier === "soft"
+          ? "Soft directions note (moderate confidence)"
+          : "Deferred — team follow-up";
+    sections.push(
+      `### Draft Offer\n` +
+        `Tier: ${tierLabel}\n` +
+        `Validated: ${o.validated ? "yes" : "no — unsupported claims stripped"}\n\n` +
+        `Present this offer to the user. Do not paraphrase or add to it — ` +
+        `deliver the text below as your response, then invite any questions:\n\n` +
+        o.text
+    );
+  }
+
   const intelligenceBlock =
     sections.length > 0
       ? "\n\n---\n\n" +
@@ -178,6 +197,16 @@ async function runAgents(
       conversationExcerpt,
     });
     updated.validation = validation;
+  }
+
+  if (nextState === "OFFER_DRAFT" && updated.brief && updated.services) {
+    const offer = await draftOffer({
+      brief: updated.brief,
+      serviceMatches: updated.services,
+      fileSummaries,
+      conversationHistory: messages,
+    });
+    updated.offer = offer;
   }
 
   return updated;

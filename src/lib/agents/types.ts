@@ -1,6 +1,7 @@
 import type { BusinessBrief } from "./businessAnalyst";
 import type { ServiceMatchResult } from "./serviceMatcher";
 import type { ValidationResult } from "./validator";
+import type { OfferDraftResult } from "./offerDrafter";
 
 /**
  * Accumulated agent outputs that travel with the session.
@@ -11,4 +12,5 @@ export type AgentOutputs = {
   brief?: BusinessBrief;
   services?: ServiceMatchResult;
   validation?: ValidationResult;
+  offer?: OfferDraftResult;
 };
