@@ -130,13 +130,6 @@ export default function ContactForm() {
       animate={{ opacity: 1, y: 0  }}
       transition={{ duration: 0.3, ease: "easeOut" }}
     >
-      <style>{`
-        .pm-contact-input:focus {
-          border-color: rgba(200, 245, 96, 0.4) !important;
-          box-shadow: 0 0 0 3px rgba(200, 245, 96, 0.06);
-        }
-      `}</style>
-
       <div
         className="rounded-2xl p-5"
         style={{

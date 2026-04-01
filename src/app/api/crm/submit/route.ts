@@ -35,17 +35,8 @@ export async function POST(request: Request) {
     );
   }
 
-  // ── Log intake (replace with real CRM call) ────────────────────────────
-  console.log("[crm] New submission", {
-    sessionId: payload.sessionId,
-    submittedAt: payload.submittedAt,
-    contact: payload.contact,
-    topService: payload.services?.top_match ?? "unknown",
-    offerTier: payload.offer?.tier ?? "unknown",
-  });
-
-  // Full payload logged at debug level — contains brief + offer text
-  console.debug("[crm] Full payload", JSON.stringify(payload, null, 2));
+  // TODO: Replace with a real CRM call (Notion, HubSpot, Airtable, etc.)
+  // The payload contains: sessionId, submittedAt, contact, brief, services, offer
 
   return Response.json({ ok: true });
 }

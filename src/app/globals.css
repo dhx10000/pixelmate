@@ -24,3 +24,64 @@ body {
   background-color: var(--color-bg-deep);
   color: var(--color-text-primary);
 }
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
+
+/* Typing indicator dots */
+@keyframes pixelmate-pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40%            { opacity: 1;   transform: scale(1);   }
+}
+
+/* Voice recording dot */
+@keyframes voice-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(200, 245, 96, 0.6); }
+  70%  { box-shadow: 0 0 0 8px rgba(200, 245, 96, 0);   }
+  100% { box-shadow: 0 0 0 0   rgba(200, 245, 96, 0);   }
+}
+
+/* Generic fade-in (tooltips, labels) */
+@keyframes pm-fadein {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+/* ── Scrollbar — dark theme, thin, hidden on mobile ──────────────────────── */
+
+.pm-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.pm-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.pm-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pm-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.pm-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+@media (max-width: 639px) {
+  .pm-scrollbar {
+    scrollbar-width: none;
+  }
+  .pm-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ── Contact form input focus ─────────────────────────────────────────────── */
+
+.pm-contact-input:focus {
+  border-color: rgba(200, 245, 96, 0.4) !important;
+  box-shadow: 0 0 0 3px rgba(200, 245, 96, 0.06);
+}

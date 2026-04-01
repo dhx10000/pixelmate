@@ -217,6 +217,12 @@ export default function ChatWindow() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isStreaming]);
 
+  // Update browser tab title while bot is streaming
+  useEffect(() => {
+    document.title = isStreaming ? "PixelMate · Typing…" : "PixelMate";
+    return () => { document.title = "PixelMate"; };
+  }, [isStreaming]);
+
   // Scroll to bottom when the virtual keyboard opens on mobile
   useEffect(() => {
     const vv = window.visualViewport;
@@ -301,13 +307,6 @@ export default function ChatWindow() {
 
   return (
     <>
-      <style>{`
-        @keyframes pixelmate-pulse {
-          0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
-          40% { opacity: 1; transform: scale(1); }
-        }
-      `}</style>
-
       <FileDropZone ref={fileRef} onFiles={handleNewFiles}>
         <div
           className="w-full flex flex-col flex-1 min-h-0 overflow-hidden rounded-none sm:mx-auto sm:rounded-[20px]"
@@ -318,7 +317,7 @@ export default function ChatWindow() {
           }}
         >
           {/* Message list */}
-          <div className="flex flex-col gap-4 overflow-y-auto px-4 py-5 flex-1 min-h-0 sm:px-5 sm:py-6 sm:max-h-[420px]">
+          <div className="pm-scrollbar flex flex-col gap-4 overflow-y-auto px-4 py-5 flex-1 min-h-0 sm:px-5 sm:py-6 sm:max-h-[420px]">
             {messages.map((msg, index) => {
               if (msg.role === "bot" && msg.streaming && msg.text === "") {
                 return <TypingIndicator key={msg.id} />;
@@ -421,15 +420,17 @@ export default function ChatWindow() {
               </button>
 
               {/* Send — 44px touch target on mobile */}
-              <button
+              <motion.button
                 type="button"
                 aria-label="Send message"
                 onClick={handleSend}
                 disabled={!input.trim() || inputDisabled}
+                whileHover={!input.trim() || inputDisabled ? {} : { scale: 1.08 }}
+                whileTap={!input.trim() || inputDisabled ? {} : { scale: 0.92 }}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-bg-deep transition-opacity disabled:opacity-30 sm:h-8 sm:w-8"
               >
                 <SendIcon />
-              </button>
+              </motion.button>
             </div>
           </div>
         </div>

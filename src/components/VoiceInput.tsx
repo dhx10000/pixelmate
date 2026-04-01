@@ -191,7 +191,7 @@ const VoiceInput = forwardRef<VoiceInputHandle, Props>(function VoiceInput(
           style={{
             background: "#18181C",
             border: "1px solid rgba(255,255,255,0.08)",
-            animation: "pb-fadein 0.2s ease both",
+            animation: "pm-fadein 0.2s ease both",
           }}
         >
           Voice is supported in Chrome and Edge
@@ -209,13 +209,6 @@ const VoiceInput = forwardRef<VoiceInputHandle, Props>(function VoiceInput(
         </div>
       )}
 
-      <style>{`
-        @keyframes voice-pulse {
-          0%   { box-shadow: 0 0 0 0   rgba(200,245,96,0.6); }
-          70%  { box-shadow: 0 0 0 8px rgba(200,245,96,0); }
-          100% { box-shadow: 0 0 0 0   rgba(200,245,96,0); }
-        }
-      `}</style>
     </div>
   );
 });
