@@ -195,11 +195,17 @@ export const FileDropZone = forwardRef<FileUploadHandle, FileDropZoneProps>(
     const [rejections, setRejections] = useState<string[]>([]);
 
     const onDrop = useCallback(
-      (accepted: File[], rejected: { file: File; errors: readonly { message: string }[] }[]) => {
+      (accepted: File[], rejected: { file: File; errors: readonly { message: string; code?: string }[] }[]) => {
         if (accepted.length > 0) onFiles(accepted);
         if (rejected.length > 0) {
           const msgs = rejected.map(({ file, errors }) => {
-            const reason = errors[0]?.message ?? "Invalid file";
+            const code = errors[0]?.code;
+            const reason =
+              code === "file-too-large"
+                ? "too large — max 10 MB"
+                : code === "file-invalid-type"
+                  ? "unsupported format"
+                  : errors[0]?.message ?? "invalid file";
             return `${file.name}: ${reason}`;
           });
           setRejections(msgs);

@@ -41,12 +41,27 @@ function SendIcon() {
   );
 }
 
-// ── Shared entrance animation for every item in the message list ───────────
+function RetryIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+    </svg>
+  );
+}
+
+// ── Shared entrance animation ──────────────────────────────────────────────
 
 const msgVariants = {
   hidden:  { opacity: 0, y: 8 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" as const } },
 };
+
+// ── Error accent colours (used across message + retry button) ──────────────
+
+const ERROR_BG   = "rgba(239,68,68,0.07)";
+const ERROR_BDR  = "rgba(239,68,68,0.18)";
+const ERROR_TEXT = "rgba(255,120,100,0.95)";
 
 // ── Message subcomponents ──────────────────────────────────────────────────
 
@@ -87,7 +102,21 @@ function TypingIndicator() {
   );
 }
 
-function BotMessage({ text, isNew }: { text: string; isNew: boolean }) {
+function BotMessage({
+  text,
+  isNew,
+  isError,
+  errorType,
+  onRetry,
+}: {
+  text: string;
+  isNew: boolean;
+  isError?: boolean;
+  errorType?: "timeout" | "api" | "rateLimit";
+  onRetry?: () => void;
+}) {
+  const isRateLimit = errorType === "rateLimit";
+
   return (
     <motion.div
       className="flex items-start gap-3"
@@ -97,10 +126,29 @@ function BotMessage({ text, isNew }: { text: string; isNew: boolean }) {
     >
       <BotAvatar />
       <div
-        className="rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed text-text-primary"
-        style={{ background: "#18181C", maxWidth: "80%" }}
+        className="rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed"
+        style={{
+          background: isError ? ERROR_BG : "#18181C",
+          border: isError ? `1px solid ${ERROR_BDR}` : undefined,
+          color: isError ? ERROR_TEXT : "#E8E4DD",
+          maxWidth: "80%",
+        }}
+        role={isError ? "alert" : undefined}
       >
         {text}
+
+        {/* Retry button — shown on api/timeout errors, not on rateLimit */}
+        {isError && !isRateLimit && onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-2.5 flex items-center gap-1.5 text-xs font-medium transition-opacity hover:opacity-75"
+            style={{ color: ERROR_TEXT }}
+          >
+            <RetryIcon />
+            Try again
+          </button>
+        )}
       </div>
     </motion.div>
   );
@@ -132,8 +180,10 @@ function UserMessage({ text, isNew }: { text: string; isNew: boolean }) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function ChatWindow() {
-  const { messages, isStreaming, isRestoring, currentState, agentOutputs, showChips, sendMessage, dismissChips, analyzeFiles } =
-    useChatContext();
+  const {
+    messages, isStreaming, isRestoring, currentState, agentOutputs,
+    showChips, sendMessage, retryLastMessage, dismissChips, analyzeFiles,
+  } = useChatContext();
 
   const [input, setInput] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
@@ -144,9 +194,13 @@ export default function ChatWindow() {
 
   const hasUserMessages = messages.some((m) => m.role === "user");
 
-  // Track how many messages existed when the component first mounted (after
-  // restore). Any message at an index >= this count is truly "new" and should
-  // animate in.
+  // Has the session hit the message limit?
+  const isRateLimited = messages.some(
+    (m) => m.isError && m.errorType === "rateLimit"
+  );
+
+  // Track how many messages existed at mount (post-restore) — skip animation
+  // for pre-existing messages so scrolling history doesn't re-trigger it.
   const initialCountRef = useRef<number | null>(null);
   useEffect(() => {
     if (!isRestoring && initialCountRef.current === null) {
@@ -163,8 +217,7 @@ export default function ChatWindow() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isStreaming]);
 
-  // When the virtual keyboard opens on mobile, scroll to keep input visible.
-  // visualViewport fires "resize" when the keyboard appears/disappears.
+  // Scroll to bottom when the virtual keyboard opens on mobile
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
@@ -213,14 +266,8 @@ export default function ChatWindow() {
 
   function handleChipSelect(text: string) {
     dismissChips();
-    if (text === "Record voice") {
-      voiceRef.current?.start();
-      return;
-    }
-    if (text === "Upload files") {
-      fileRef.current?.open();
-      return;
-    }
+    if (text === "Record voice") { voiceRef.current?.start(); return; }
+    if (text === "Upload files") { fileRef.current?.open(); return; }
     sendMessage(text);
   }
 
@@ -231,12 +278,26 @@ export default function ChatWindow() {
     }
   }
 
-  // Scroll the input into view when the keyboard opens on mobile
+  // Scroll input into view when keyboard opens on mobile
   function handleTextareaFocus() {
     setTimeout(() => {
       bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }, 350);
   }
+
+  // Combined disabled state for the input area
+  const inputDisabled =
+    isStreaming || isRestoring || currentState === "DONE" || isRateLimited;
+
+  const inputPlaceholder = isRateLimited
+    ? "Message limit reached."
+    : currentState === "DONE"
+      ? "This conversation is complete."
+      : isRestoring
+        ? "Restoring your conversation…"
+        : isStreaming
+          ? "PixelMate is thinking…"
+          : "Tell me about your challenge...";
 
   return (
     <>
@@ -247,16 +308,7 @@ export default function ChatWindow() {
         }
       `}</style>
 
-      {/* FileDropZone wraps the whole chat card */}
-      <FileDropZone
-        ref={fileRef}
-        onFiles={handleNewFiles}
-      >
-        {/*
-          Mobile: flex-1 min-h-0 so this fills the remaining viewport height
-          between Hero+ProgressBar and the bottom of the screen.
-          Desktop: max-width 680, rounded corners, fixed message list height.
-        */}
+      <FileDropZone ref={fileRef} onFiles={handleNewFiles}>
         <div
           className="w-full flex flex-col flex-1 min-h-0 overflow-hidden rounded-none sm:mx-auto sm:rounded-[20px]"
           style={{
@@ -265,18 +317,31 @@ export default function ChatWindow() {
             border: "1px solid rgba(255,255,255,0.06)",
           }}
         >
-          {/* Message list — grows to fill available space on mobile */}
-          <div
-            className="flex flex-col gap-4 overflow-y-auto px-4 py-5 flex-1 min-h-0 sm:px-5 sm:py-6 sm:max-h-[420px]"
-          >
+          {/* Message list */}
+          <div className="flex flex-col gap-4 overflow-y-auto px-4 py-5 flex-1 min-h-0 sm:px-5 sm:py-6 sm:max-h-[420px]">
             {messages.map((msg, index) => {
               if (msg.role === "bot" && msg.streaming && msg.text === "") {
                 return <TypingIndicator key={msg.id} />;
               }
               return msg.role === "bot" ? (
-                <BotMessage key={msg.id} text={msg.text} isNew={isNewMessage(index)} />
+                <BotMessage
+                  key={msg.id}
+                  text={msg.text}
+                  isNew={isNewMessage(index)}
+                  isError={msg.isError}
+                  errorType={msg.errorType}
+                  onRetry={
+                    msg.isError && msg.errorType !== "rateLimit"
+                      ? retryLastMessage
+                      : undefined
+                  }
+                />
               ) : (
-                <UserMessage key={msg.id} text={msg.text} isNew={isNewMessage(index)} />
+                <UserMessage
+                  key={msg.id}
+                  text={msg.text}
+                  isNew={isNewMessage(index)}
+                />
               );
             })}
 
@@ -284,22 +349,15 @@ export default function ChatWindow() {
               <StarterChips onSelect={handleChipSelect} />
             )}
 
-            {currentState === "SUMMARY_REVIEW" && !isStreaming && (
-              <SummaryCard />
-            )}
-
-            {currentState === "CONTACT_CAPTURE" && !isStreaming && (
-              <ContactForm />
-            )}
-
+            {currentState === "SUMMARY_REVIEW" && !isStreaming && <SummaryCard />}
+            {currentState === "CONTACT_CAPTURE" && !isStreaming && <ContactForm />}
             {(currentState === "OFFER_DRAFT" || currentState === "DONE") &&
-              !!agentOutputs.offer &&
-              !isStreaming && <OfferCard />}
+              !!agentOutputs.offer && !isStreaming && <OfferCard />}
 
             <div ref={bottomRef} />
           </div>
 
-          {/* File preview cards */}
+          {/* File preview */}
           <FilePreviewList files={uploadedFiles} onRemove={removeFile} />
 
           {/* Divider */}
@@ -320,7 +378,7 @@ export default function ChatWindow() {
               <VoiceInput
                 ref={voiceRef}
                 onTranscript={handleTranscript}
-                disabled={isStreaming || isRestoring || currentState === "DONE"}
+                disabled={inputDisabled}
               />
 
               <textarea
@@ -329,16 +387,8 @@ export default function ChatWindow() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onFocus={handleTextareaFocus}
-                placeholder={
-                  currentState === "DONE"
-                    ? "This conversation is complete."
-                    : isRestoring
-                      ? "Restoring your conversation…"
-                      : isStreaming
-                        ? "PixelMate is thinking…"
-                        : "Tell me about your challenge..."
-                }
-                disabled={isStreaming || isRestoring || currentState === "DONE"}
+                placeholder={inputPlaceholder}
+                disabled={inputDisabled}
                 rows={1}
                 className="flex-1 resize-none bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none leading-relaxed py-1 disabled:cursor-not-allowed"
                 style={{ maxHeight: 120 }}
@@ -349,7 +399,7 @@ export default function ChatWindow() {
                 }}
               />
 
-              {/* Paperclip — 44px touch target on mobile, 32px on desktop */}
+              {/* Paperclip — 44px touch target on mobile */}
               <button
                 type="button"
                 aria-label="Attach file"
@@ -370,12 +420,12 @@ export default function ChatWindow() {
                 </span>
               </button>
 
-              {/* Send — 44px touch target on mobile, 32px on desktop */}
+              {/* Send — 44px touch target on mobile */}
               <button
                 type="button"
                 aria-label="Send message"
                 onClick={handleSend}
-                disabled={!input.trim() || isStreaming || isRestoring || currentState === "DONE"}
+                disabled={!input.trim() || inputDisabled}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-bg-deep transition-opacity disabled:opacity-30 sm:h-8 sm:w-8"
               >
                 <SendIcon />

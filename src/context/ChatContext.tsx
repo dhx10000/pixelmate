@@ -18,6 +18,10 @@ export type Message = {
   role: "bot" | "user";
   text: string;
   streaming?: boolean;
+  /** True when this message represents a recoverable error */
+  isError?: boolean;
+  /** Distinguishes timeout errors, API errors, and the rate-limit notice */
+  errorType?: "timeout" | "api" | "rateLimit";
 };
 
 export type ContactData = {
@@ -47,12 +51,16 @@ type ChatContextValue = {
   showChips: boolean;
   dismissChips: () => void;
   sendMessage: (text: string) => void;
+  retryLastMessage: () => void;
   analyzeFiles: (files: File[]) => void;
   forceState: (state: ConversationState) => void;
   submitContact: (data: ContactData) => void;
 };
 
 // ── SSE helper ─────────────────────────────────────────────────────────────
+//
+// Propagates errorType as a property on the thrown Error so the catch block
+// in streamBotReply can distinguish timeout vs API vs other failures.
 
 async function* readSSEStream(
   reader: ReadableStreamDefaultReader<Uint8Array>
@@ -75,7 +83,12 @@ async function* readSSEStream(
 
       try {
         const parsed = JSON.parse(payload);
-        if (parsed.error) throw new Error(parsed.error);
+        if (parsed.error) {
+          const err = new Error(parsed.error as string);
+          (err as Error & { errorType?: string }).errorType =
+            typeof parsed.errorType === "string" ? parsed.errorType : "api";
+          throw err;
+        }
         if (typeof parsed.text === "string") {
           yield { type: "text", text: parsed.text };
         } else if (typeof parsed.state === "string") {
@@ -83,8 +96,9 @@ async function* readSSEStream(
         } else if (parsed.agents && typeof parsed.agents === "object") {
           yield { type: "agents", agents: parsed.agents as AgentOutputs };
         }
-      } catch {
-        // malformed chunk — skip
+      } catch (e) {
+        // Re-throw structured errors; skip malformed chunks
+        if (e instanceof Error && e.message !== "JSON.parse error") throw e;
       }
     }
   }
@@ -97,6 +111,10 @@ const WELCOME: Message = {
   role: "bot",
   text: "Hi! I'm PixelMate — PIXEL's AI assistant. Tell me about the challenge your business is facing, or pick one of the options below to get started.",
 };
+
+// ── Rate limit ─────────────────────────────────────────────────────────────
+
+const MESSAGE_LIMIT = 50;
 
 // ── Context ────────────────────────────────────────────────────────────────
 
@@ -120,29 +138,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const currentStateRef = useRef<ConversationState>("WELCOME");
   const agentOutputsRef = useRef<AgentOutputs>({});
   const fileSummariesRef = useRef<string[]>([]);
+  const sessionIdRef = useRef(sessionId);
 
-  useEffect(() => {
-    isStreamingRef.current = isStreaming;
-  }, [isStreaming]);
-
-  useEffect(() => {
-    currentStateRef.current = currentState;
-  }, [currentState]);
-
-  useEffect(() => {
-    agentOutputsRef.current = agentOutputs;
-  }, [agentOutputs]);
-
-  useEffect(() => {
-    fileSummariesRef.current = fileSummaries;
-  }, [fileSummaries]);
+  useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
+  useEffect(() => { currentStateRef.current = currentState; }, [currentState]);
+  useEffect(() => { agentOutputsRef.current = agentOutputs; }, [agentOutputs]);
+  useEffect(() => { fileSummariesRef.current = fileSummaries; }, [fileSummaries]);
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
 
   // ── Session restore on mount ───────────────────────────────────────────────
   //
-  // 1. Read sessionId from localStorage.
-  // 2. Fetch that session from Supabase via the restore route.
-  // 3. If found and not DONE, hydrate all state from it.
-  // 4. If not found / DONE / any error, generate a fresh session and persist it.
+  // On any failure (network, bad data, DONE session), silently fall through
+  // to a fresh session — the user should never see a restore error.
 
   useEffect(() => {
     async function restoreOrCreate() {
@@ -153,7 +160,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           const res = await fetch(`/api/session/${stored}`);
           if (res.ok) {
             const data = await res.json();
-            // Don't restore completed sessions — start fresh
             if (data.current_state !== "DONE") {
               const restoredMessages: Message[] = Array.isArray(data.conversation_history)
                 ? [
@@ -177,18 +183,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               setFileSummaries(
                 Array.isArray(data.file_summaries) ? data.file_summaries : []
               );
-              // Hide chips if there's real conversation history
               if (restoredMessages.length > 1) setShowChips(false);
               setIsRestoring(false);
               return;
             }
           }
+          // Fall through: session not found, DONE, or bad response
         } catch {
-          // Network error or bad JSON — fall through to fresh session
+          // Network error or bad JSON — start fresh silently
         }
       }
 
-      // Fresh session — persist the new id
+      // Fresh session
       const newId = crypto.randomUUID();
       setSessionId(newId);
       localStorage.setItem(LS_KEY, newId);
@@ -206,12 +212,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
   }, [sessionId, isRestoring]);
 
+  // ── Core streaming ─────────────────────────────────────────────────────────
+
   const streamBotReply = useCallback(
     async (history: Message[], sid: string) => {
-      // Build API payload — skip the welcome message (UI-only).
-      // Anthropic requires messages to start with "user".
       const apiMessages = history
-        .filter((m) => m.id !== 0)
+        .filter((m) => m.id !== 0 && !m.isError)
         .map((m) => ({
           role: m.role === "bot" ? "assistant" : "user",
           content: m.text,
@@ -255,12 +261,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } catch (err) {
-        const errText =
-          err instanceof Error ? err.message : "Something went wrong.";
+        const errorType =
+          ((err as { errorType?: string }).errorType as "timeout" | "api" | undefined) ??
+          "api";
+        const errorText =
+          errorType === "timeout"
+            ? "This is taking longer than expected. Please try again."
+            : "Something went wrong. Please try again.";
+
         setMessages((prev) =>
           prev.map((m) =>
             m.id === botId
-              ? { ...m, text: `Sorry, I ran into an issue: ${errText}` }
+              ? { ...m, text: errorText, isError: true, errorType }
               : m
           )
         );
@@ -274,18 +286,56 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  // ── Send message ───────────────────────────────────────────────────────────
+
   const sendMessage = useCallback(
     (text: string) => {
       if (isStreamingRef.current) return;
+
       const userMsg: Message = { id: Date.now(), role: "user", text };
+
       setMessages((prev) => {
+        // Count non-error user messages to enforce the rate limit
+        const userCount = prev.filter((m) => m.role === "user").length;
+        if (userCount >= MESSAGE_LIMIT) {
+          return [
+            ...prev,
+            {
+              id: Date.now() + 1,
+              role: "bot",
+              text: "You've reached the message limit for this session. Please send your brief to the PIXEL team, or contact them directly.",
+              isError: true,
+              errorType: "rateLimit" as const,
+            },
+          ];
+        }
+
         const next = [...prev, userMsg];
-        streamBotReply(next, sessionId);
+        // Side-effect inside updater is intentional — same pattern as sendMessage
+        streamBotReply(next, sessionIdRef.current);
         return next;
       });
     },
-    [sessionId, streamBotReply]
+    [streamBotReply]
   );
+
+  // ── Retry last message ─────────────────────────────────────────────────────
+  //
+  // Removes the error bot message and re-sends the last user message.
+
+  const retryLastMessage = useCallback(() => {
+    if (isStreamingRef.current) return;
+
+    setMessages((prev) => {
+      const lastUserIdx = prev.findLastIndex((m) => m.role === "user");
+      if (lastUserIdx === -1) return prev;
+      const trimmed = prev.slice(0, lastUserIdx + 1);
+      streamBotReply(trimmed, sessionIdRef.current);
+      return trimmed;
+    });
+  }, [streamBotReply]);
+
+  // ── Other actions ──────────────────────────────────────────────────────────
 
   const dismissChips = useCallback(() => setShowChips(false), []);
 
@@ -297,10 +347,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const submitContact = useCallback(
     (data: ContactData) => {
       setContactData(data);
-      // Build a readable summary so the bot has contact info in its history.
-      // Do NOT forceState here — let the server receive currentState="CONTACT_CAPTURE"
-      // so getNextState produces "OFFER_DRAFT" naturally, triggering runAgents to call
-      // draftOffer before the stream opens.
       const parts = [
         `Name: ${data.name}`,
         `Company: ${data.company_name}`,
@@ -314,10 +360,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     [sendMessage]
   );
 
+  // ── File analysis ──────────────────────────────────────────────────────────
+
   const analyzeFiles = useCallback((files: File[]) => {
     if (files.length === 0) return;
 
-    // Run async without blocking — state updates happen inside
     (async () => {
       setIsStreaming(true);
       const botId = Date.now();
@@ -331,38 +378,55 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         const newSummaries: string[] = [];
 
         for (const file of files) {
-          // 1. Upload
-          const form = new FormData();
-          form.append("file", file);
-          const upRes = await fetch("/api/files/upload", {
-            method: "POST",
-            body: form,
-          });
-          if (!upRes.ok) {
-            const { error } = await upRes.json();
-            results.push(`**${file.name}** — upload failed: ${error}`);
+          // ── Upload ─────────────────────────────────────────────────────
+          let upRes: Response;
+          try {
+            const form = new FormData();
+            form.append("file", file);
+            upRes = await fetch("/api/files/upload", { method: "POST", body: form });
+          } catch {
+            results.push(`**${file.name}** — network error — check your connection`);
             continue;
           }
+
+          if (!upRes.ok) {
+            const reason =
+              upRes.status === 413
+                ? "too large — max 10 MB"
+                : upRes.status === 415 || upRes.status === 422
+                  ? "unsupported format"
+                  : await upRes.json().then((b) => b.error ?? "upload failed").catch(() => "upload failed");
+            results.push(`**${file.name}** — ${reason}`);
+            continue;
+          }
+
           const { file_id, ext, filename, type } = await upRes.json();
 
-          // 2. Analyze
-          const anRes = await fetch("/api/files/analyze", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ file_id, ext, filename, type }),
-          });
-          if (!anRes.ok) {
-            const { error } = await anRes.json();
-            results.push(`**${file.name}** — analysis failed: ${error}`);
+          // ── Analyze ────────────────────────────────────────────────────
+          let anRes: Response;
+          try {
+            anRes = await fetch("/api/files/analyze", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ file_id, ext, filename, type }),
+            });
+          } catch {
+            results.push(`**${file.name}** — network error during analysis`);
             continue;
           }
+
+          if (!anRes.ok) {
+            const body = await anRes.json().catch(() => ({}));
+            results.push(`**${file.name}** — analysis failed: ${body.error ?? "unknown error"}`);
+            continue;
+          }
+
           const { summary, questions } = await anRes.json();
           const qs = (questions as string[]).map((q, i) => `${i + 1}. ${q}`).join("\n");
           results.push(`**${filename}**\n${summary}\n\n${qs}`);
           newSummaries.push(`${filename}: ${summary}`);
         }
 
-        // Accumulate file summaries for agent context
         if (newSummaries.length > 0) {
           setFileSummaries((prev) => [...prev, ...newSummaries]);
         }
@@ -380,7 +444,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === botId
-              ? { ...m, text: `Sorry, I couldn't analyse the file(s): ${errText}` }
+              ? { ...m, text: `Sorry, I couldn't analyse the file(s): ${errText}`, isError: true, errorType: "api" as const }
               : m
           )
         );
@@ -406,6 +470,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         isRestoring,
         showChips,
         sendMessage,
+        retryLastMessage,
         dismissChips,
         analyzeFiles,
         forceState,

@@ -81,10 +81,6 @@ function deriveContext(
 }
 
 // ── System prompt builder ──────────────────────────────────────────────────
-//
-// Injects agent intelligence as an internal reference section.
-// The instruction "do not read aloud" prevents Claude from reciting the
-// JSON directly — it uses it to inform tone, depth, and what to ask next.
 
 function buildSystemPrompt(
   state: ConversationState,
@@ -172,9 +168,6 @@ function buildSystemPrompt(
 }
 
 // ── Agent orchestration ────────────────────────────────────────────────────
-//
-// Runs silently before the stream opens. Returns an updated AgentOutputs
-// object — only the fields relevant to the current transition are changed.
 
 async function runAgents(
   nextState: ConversationState,
@@ -189,7 +182,6 @@ async function runAgents(
     const services = await matchServices(brief);
     updated.brief = brief;
     updated.services = services;
-    // Clear downstream outputs — they'll regenerate at their own transition steps
     updated.validation = undefined;
     updated.offer = undefined;
   }
@@ -218,6 +210,35 @@ async function runAgents(
   }
 
   return updated;
+}
+
+// ── SSE error helper ───────────────────────────────────────────────────────
+//
+// Returns a minimal SSE stream containing one error event then closes.
+// Used when we can't open the main stream (e.g. agent orchestration failed).
+
+const SSE_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache",
+  Connection: "keep-alive",
+};
+
+function sseErrorResponse(
+  message: string,
+  errorType: "timeout" | "api"
+): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({ error: message, errorType })}\n\n`
+        )
+      );
+      controller.close();
+    },
+  });
+  return new Response(stream, { headers: SSE_HEADERS });
 }
 
 // ── Route handler ──────────────────────────────────────────────────────────
@@ -250,13 +271,20 @@ export async function POST(request: Request) {
   const context = deriveContext(messages, currentState);
   const nextState = getNextState(currentState, context);
 
-  // Run agents before streaming — their output shapes the system prompt
-  const agentOutputs = await runAgents(
-    nextState,
-    messages,
-    fileSummaries,
-    incomingAgents
-  );
+  // Run agents before streaming — failures here return a proper SSE error
+  // so the client always receives a well-formed event stream.
+  let agentOutputs: AgentOutputs;
+  try {
+    agentOutputs = await runAgents(
+      nextState,
+      messages,
+      fileSummaries,
+      incomingAgents
+    );
+  } catch (err) {
+    console.error("[chat] agent orchestration failed:", err);
+    return sseErrorResponse("Something went wrong. Please try again.", "api");
+  }
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -268,13 +296,21 @@ export async function POST(request: Request) {
 
       let botReply = "";
 
+      // 30-second timeout on the Claude API call specifically.
+      // runAgents already completed; this guards the streaming phase only.
+      const abortCtrl = new AbortController();
+      const timeoutId = setTimeout(() => abortCtrl.abort(), 30_000);
+
       try {
-        const anthropicStream = client.messages.stream({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1024,
-          system: buildSystemPrompt(nextState, agentOutputs),
-          messages,
-        });
+        const anthropicStream = client.messages.stream(
+          {
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 1024,
+            system: buildSystemPrompt(nextState, agentOutputs),
+            messages,
+          },
+          { signal: abortCtrl.signal }
+        );
 
         for await (const event of anthropicStream) {
           if (
@@ -286,13 +322,14 @@ export async function POST(request: Request) {
           }
         }
 
+        clearTimeout(timeoutId);
+
         // Emit state and agent outputs as the final frames before [DONE]
         send(JSON.stringify({ state: nextState }));
         send(JSON.stringify({ agents: agentOutputs }));
         send("[DONE]");
 
-        // Upsert session after a successful exchange — fire-and-forget,
-        // never blocks or errors the stream response.
+        // Upsert session — fire-and-forget, never blocks the response.
         const fullHistory: ChatMessage[] = [
           ...messages,
           { role: "assistant", content: botReply },
@@ -313,22 +350,23 @@ export async function POST(request: Request) {
             if (error) console.error("[chat] session upsert failed:", error.message);
           });
       } catch (err) {
-        const message =
-          err instanceof Anthropic.APIError
-            ? err.message
-            : "An unexpected error occurred";
-        send(JSON.stringify({ error: message }));
+        clearTimeout(timeoutId);
+
+        const isTimeout =
+          abortCtrl.signal.aborted ||
+          (err instanceof Error && err.name === "AbortError");
+
+        const errorType = isTimeout ? "timeout" : "api";
+        const errorMsg = isTimeout
+          ? "This is taking longer than expected. Please try again."
+          : "Something went wrong. Please try again.";
+
+        send(JSON.stringify({ error: errorMsg, errorType }));
       } finally {
         controller.close();
       }
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
+  return new Response(stream, { headers: SSE_HEADERS });
 }

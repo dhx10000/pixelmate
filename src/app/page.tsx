@@ -1,6 +1,7 @@
 import Hero from "@/components/Hero";
 import ChatWindow from "@/components/ChatWindow";
 import ProgressBar from "@/components/ProgressBar";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { ChatProvider } from "@/context/ChatContext";
 
 export default function Home() {
@@ -28,13 +29,15 @@ export default function Home() {
       </div>
 
       {/* Content */}
-      <ChatProvider>
-        <main className="flex w-full flex-col items-center flex-1 min-h-0 px-0 sm:px-4">
-          <Hero />
-          <ProgressBar />
-          <ChatWindow />
-        </main>
-      </ChatProvider>
+      <ErrorBoundary>
+        <ChatProvider>
+          <main className="flex w-full flex-col items-center flex-1 min-h-0 px-0 sm:px-4">
+            <Hero />
+            <ProgressBar />
+            <ChatWindow />
+          </main>
+        </ChatProvider>
+      </ErrorBoundary>
 
       {/* Footer — hidden on mobile so chat fills the screen */}
       <footer className="hidden sm:flex w-full py-8 justify-center">
