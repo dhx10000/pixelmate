@@ -151,8 +151,8 @@ export default function ContactForm() {
         </p>
 
         <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-          {/* Row: Name + Company */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Row: Name + Company — stacks on mobile */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field
               label="Name"
               id="name"
@@ -195,8 +195,8 @@ export default function ContactForm() {
             onChange={handleChange}
           />
 
-          {/* Row: Phone + Website */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Row: Phone + Website — stacks on mobile */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field
               label="Phone or Messenger"
               id="phone_or_messenger"

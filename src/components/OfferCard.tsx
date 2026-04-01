@@ -271,7 +271,7 @@ export default function OfferCard() {
     >
       {/* Card header */}
       <div
-        className="px-6 py-4 flex items-center justify-between"
+        className="px-4 py-3 flex items-center justify-between sm:px-6 sm:py-4"
         style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
       >
         <div className="flex items-center gap-2.5">
@@ -295,7 +295,7 @@ export default function OfferCard() {
       </div>
 
       {/* Card body */}
-      <div className="px-6 py-5 flex flex-col gap-0">
+      <div className="px-4 py-4 flex flex-col gap-0 sm:px-6 sm:py-5">
         {hasStructuredSections ? (
           sections.map((section, i) => {
             const isMissing = section.number === 4;

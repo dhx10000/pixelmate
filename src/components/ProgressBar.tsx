@@ -30,14 +30,14 @@ export default function ProgressBar() {
 
   return (
     <div
-      className="w-full mx-auto mb-3"
+      className="w-full mx-auto mb-3 px-4 sm:px-0"
       style={{ maxWidth: 680 }}
       role="status"
       aria-label={step.label}
     >
       {/* Label */}
       <motion.p
-        className="font-mono text-xs text-text-muted mb-2 tracking-wide"
+        className="font-mono text-xs text-text-muted mb-2 tracking-wide truncate"
         initial={{ opacity: 0, y: -4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: "easeOut" as const }}

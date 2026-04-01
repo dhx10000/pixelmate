@@ -42,9 +42,6 @@ function SendIcon() {
 }
 
 // ── Shared entrance animation for every item in the message list ───────────
-//
-// `initial` is only applied on mount — framer-motion does not re-animate
-// elements that are already in the DOM, so scrolling through history is safe.
 
 const msgVariants = {
   hidden:  { opacity: 0, y: 8 },
@@ -149,8 +146,7 @@ export default function ChatWindow() {
 
   // Track how many messages existed when the component first mounted (after
   // restore). Any message at an index >= this count is truly "new" and should
-  // animate in. Messages that were already present at mount skip the animation
-  // so scrolling through history never re-triggers it.
+  // animate in.
   const initialCountRef = useRef<number | null>(null);
   useEffect(() => {
     if (!isRestoring && initialCountRef.current === null) {
@@ -162,9 +158,24 @@ export default function ChatWindow() {
     return initialCountRef.current === null || index >= initialCountRef.current;
   }
 
+  // Scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isStreaming]);
+
+  // When the virtual keyboard opens on mobile, scroll to keep input visible.
+  // visualViewport fires "resize" when the keyboard appears/disappears.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    function onVVResize() {
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "instant" });
+      });
+    }
+    vv.addEventListener("resize", onVVResize);
+    return () => vv.removeEventListener("resize", onVVResize);
+  }, []);
 
   const handleNewFiles = useCallback((files: File[]) => {
     const newFiles: File[] = [];
@@ -174,7 +185,6 @@ export default function ChatWindow() {
       newFiles.push(...deduped);
       return [...prev, ...deduped];
     });
-    // Trigger analysis after dedup — runs after state update settles
     setTimeout(() => {
       if (newFiles.length > 0) analyzeFiles(newFiles);
     }, 0);
@@ -221,6 +231,13 @@ export default function ChatWindow() {
     }
   }
 
+  // Scroll the input into view when the keyboard opens on mobile
+  function handleTextareaFocus() {
+    setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }, 350);
+  }
+
   return (
     <>
       <style>{`
@@ -230,24 +247,27 @@ export default function ChatWindow() {
         }
       `}</style>
 
-      {/* FileDropZone wraps the whole chat card so drag works over all of it */}
+      {/* FileDropZone wraps the whole chat card */}
       <FileDropZone
         ref={fileRef}
         onFiles={handleNewFiles}
       >
+        {/*
+          Mobile: flex-1 min-h-0 so this fills the remaining viewport height
+          between Hero+ProgressBar and the bottom of the screen.
+          Desktop: max-width 680, rounded corners, fixed message list height.
+        */}
         <div
-          className="w-full mx-auto flex flex-col overflow-hidden"
+          className="w-full flex flex-col flex-1 min-h-0 overflow-hidden rounded-none sm:mx-auto sm:rounded-[20px]"
           style={{
             maxWidth: 680,
             background: "#111114",
             border: "1px solid rgba(255,255,255,0.06)",
-            borderRadius: 20,
           }}
         >
-          {/* Message list */}
+          {/* Message list — grows to fill available space on mobile */}
           <div
-            className="flex flex-col gap-4 overflow-y-auto px-5 py-6"
-            style={{ maxHeight: 420 }}
+            className="flex flex-col gap-4 overflow-y-auto px-4 py-5 flex-1 min-h-0 sm:px-5 sm:py-6 sm:max-h-[420px]"
           >
             {messages.map((msg, index) => {
               if (msg.role === "bot" && msg.streaming && msg.text === "") {
@@ -279,7 +299,7 @@ export default function ChatWindow() {
             <div ref={bottomRef} />
           </div>
 
-          {/* File preview cards — shown between messages and input bar */}
+          {/* File preview cards */}
           <FilePreviewList files={uploadedFiles} onRemove={removeFile} />
 
           {/* Divider */}
@@ -289,9 +309,9 @@ export default function ChatWindow() {
           />
 
           {/* Input bar */}
-          <div className="px-4 py-4">
+          <div className="px-3 py-3 sm:px-4 sm:py-4">
             <div
-              className="flex items-end gap-2 rounded-full px-4 py-2.5"
+              className="flex items-end gap-1.5 sm:gap-2 rounded-full px-3 py-2 sm:px-4 sm:py-2.5"
               style={{
                 background: "#1E1E24",
                 border: "1px solid rgba(255,255,255,0.06)",
@@ -308,6 +328,7 @@ export default function ChatWindow() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onFocus={handleTextareaFocus}
                 placeholder={
                   currentState === "DONE"
                     ? "This conversation is complete."
@@ -328,15 +349,14 @@ export default function ChatWindow() {
                 }}
               />
 
-              {/* Paperclip — opens file picker */}
+              {/* Paperclip — 44px touch target on mobile, 32px on desktop */}
               <button
                 type="button"
                 aria-label="Attach file"
                 onClick={() => fileRef.current?.open()}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors sm:h-8 sm:w-8"
                 style={{
-                  color:
-                    uploadedFiles.length > 0 ? "#C8F560" : undefined,
+                  color: uploadedFiles.length > 0 ? "#C8F560" : undefined,
                 }}
               >
                 <span
@@ -350,12 +370,13 @@ export default function ChatWindow() {
                 </span>
               </button>
 
+              {/* Send — 44px touch target on mobile, 32px on desktop */}
               <button
                 type="button"
                 aria-label="Send message"
                 onClick={handleSend}
                 disabled={!input.trim() || isStreaming || isRestoring || currentState === "DONE"}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-bg-deep transition-opacity disabled:opacity-30"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-bg-deep transition-opacity disabled:opacity-30 sm:h-8 sm:w-8"
               >
                 <SendIcon />
               </button>

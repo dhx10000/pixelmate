@@ -155,7 +155,7 @@ const VoiceInput = forwardRef<VoiceInputHandle, Props>(function VoiceInput(
         type="button"
         aria-label={isListening ? "Stop recording" : "Voice input"}
         onClick={handleClick}
-        className="flex h-8 w-8 items-center justify-center rounded-full transition-colors"
+        className="flex h-11 w-11 items-center justify-center rounded-full transition-colors sm:h-8 sm:w-8"
         style={{
           color: isListening ? "#C8F560" : undefined,
         }}

@@ -14,10 +14,9 @@ import { useDropzone } from "react-dropzone";
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const ACCEPTED_TYPES = {
+  // image/* wildcard ensures mobile browsers offer both the camera and gallery
+  "image/*": [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"],
   "application/pdf": [".pdf"],
-  "image/png": [".png"],
-  "image/jpeg": [".jpg", ".jpeg"],
-  "image/webp": [".webp"],
   "application/msword": [".doc"],
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
     ".docx",

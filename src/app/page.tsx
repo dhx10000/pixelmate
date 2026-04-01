@@ -5,7 +5,7 @@ import { ChatProvider } from "@/context/ChatContext";
 
 export default function Home() {
   return (
-    <div className="relative min-h-screen bg-bg-deep flex flex-col items-center overflow-x-hidden">
+    <div className="relative bg-bg-deep flex flex-col items-center h-[100dvh] overflow-hidden sm:h-auto sm:min-h-screen sm:overflow-x-hidden">
 
       {/* Film-grain texture overlay */}
       <div
@@ -29,15 +29,15 @@ export default function Home() {
 
       {/* Content */}
       <ChatProvider>
-        <main className="flex w-full flex-col items-center flex-1 px-4">
+        <main className="flex w-full flex-col items-center flex-1 min-h-0 px-0 sm:px-4">
           <Hero />
           <ProgressBar />
           <ChatWindow />
         </main>
       </ChatProvider>
 
-      {/* Footer */}
-      <footer className="w-full py-8 flex justify-center">
+      {/* Footer — hidden on mobile so chat fills the screen */}
+      <footer className="hidden sm:flex w-full py-8 justify-center">
         <p className="font-mono text-xs tracking-wide text-text-muted text-center">
           AI assistant by PIXEL · Privacy-first · No data shared without consent
         </p>

@@ -23,10 +23,10 @@ export default function Hero() {
         transform: "translateY(20px)",
         transition: "opacity 0.6s ease, transform 0.6s ease",
       }}
-      className="w-full max-w-2xl mx-auto px-6 pt-16 pb-10 text-center"
+      className="w-full max-w-2xl mx-auto px-4 pt-8 pb-5 sm:px-6 sm:pt-16 sm:pb-10 text-center"
     >
       {/* Logo row */}
-      <div className="flex items-center justify-center gap-2.5 mb-8">
+      <div className="flex items-center justify-center gap-2.5 mb-5 sm:mb-8">
         {/* Glowing green dot */}
         <span
           className="block h-2 w-2 rounded-full bg-accent"
@@ -40,7 +40,7 @@ export default function Hero() {
       </div>
 
       {/* Headline */}
-      <h1 className="text-3xl sm:text-4xl font-semibold leading-tight tracking-tight text-text-primary mb-4">
+      <h1 className="text-[28px] sm:text-3xl lg:text-4xl font-semibold leading-tight tracking-tight text-text-primary mb-4">
         Describe your challenge.{" "}
         <span className="text-accent">PixelMate</span> will help.
       </h1>

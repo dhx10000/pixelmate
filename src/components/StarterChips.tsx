@@ -85,7 +85,7 @@ export default function StarterChips({ onSelect }: Props) {
                 onClick={() => handleClick(label)}
                 variants={chipVariants}
                 whileHover={{ y: -1 }}
-                className="rounded-full px-3.5 py-1.5 text-xs text-text-secondary"
+                className="rounded-full px-3 py-1 text-[12.5px] text-text-secondary sm:px-3.5 sm:py-1.5 sm:text-xs"
                 style={{
                   background: "rgba(255,255,255,0.04)",
                   border: "1px solid rgba(255,255,255,0.08)",
@@ -115,7 +115,7 @@ export default function StarterChips({ onSelect }: Props) {
                 onClick={() => handleClick(label)}
                 variants={chipVariants}
                 whileHover={{ y: -1 }}
-                className="rounded-full px-3.5 py-1.5 text-xs text-text-muted"
+                className="rounded-full px-3 py-1 text-[12.5px] text-text-muted sm:px-3.5 sm:py-1.5 sm:text-xs"
                 style={{
                   background: "transparent",
                   border: "1px dashed rgba(255,255,255,0.15)",

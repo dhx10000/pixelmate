@@ -54,7 +54,7 @@ export default function SummaryCard() {
 
   return (
     <motion.div
-      className="rounded-2xl p-5 text-sm leading-relaxed"
+      className="rounded-2xl p-4 sm:p-5 text-sm leading-relaxed"
       style={{
         background: "#18181C",
         border: "1px solid rgba(200,245,96,0.15)",
