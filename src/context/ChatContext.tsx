@@ -49,9 +49,11 @@ type ChatContextValue = {
   isStreaming: boolean;
   isRestoring: boolean;
   showChips: boolean;
+  showCaseStudies: boolean;
   dismissChips: () => void;
   sendMessage: (text: string) => void;
   retryLastMessage: () => void;
+  triggerCaseStudies: () => void;
   analyzeFiles: (files: File[]) => void;
   forceState: (state: ConversationState) => void;
   submitContact: (data: ContactData) => void;
@@ -132,6 +134,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [agentOutputs, setAgentOutputs] = useState<AgentOutputs>({});
   const [fileSummaries, setFileSummaries] = useState<string[]>([]);
   const [contactData, setContactData] = useState<ContactData | null>(null);
+  const [showCaseStudies, setShowCaseStudies] = useState(false);
 
   // Stable refs so async closures always see the latest values
   const isStreamingRef = useRef(false);
@@ -339,6 +342,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const dismissChips = useCallback(() => setShowChips(false), []);
 
+  const triggerCaseStudies = useCallback(() => {
+    setShowCaseStudies(true);
+    setShowChips(false);
+  }, []);
+
   const forceState = useCallback((state: ConversationState) => {
     currentStateRef.current = state;
     setCurrentState(state);
@@ -469,8 +477,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         isStreaming,
         isRestoring,
         showChips,
+        showCaseStudies,
         sendMessage,
         retryLastMessage,
+        triggerCaseStudies,
         dismissChips,
         analyzeFiles,
         forceState,
