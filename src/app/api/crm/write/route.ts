@@ -135,5 +135,20 @@ export async function POST(request: Request) {
     // Non-fatal — the lead and payload are the critical records.
   }
 
+  // ── Notify PIXEL team ──────────────────────────────────────────────────
+  // Fire-and-forget — email failure never blocks the success response.
+  fetch(new URL("/api/notify", request.url).toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ payload, leadId }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const { error } = await res.json().catch(() => ({ error: "unknown" }));
+      console.error("[crm/write] notify failed:", error);
+    }
+  }).catch((err) => {
+    console.error("[crm/write] notify fetch failed:", err);
+  });
+
   return Response.json({ ok: true, lead_id: leadId });
 }
