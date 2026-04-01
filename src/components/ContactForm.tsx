@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { useChatContext } from "@/context/ChatContext";
 import type { ContactData } from "@/context/ChatContext";
 
@@ -124,7 +125,11 @@ export default function ContactForm() {
   }
 
   return (
-    <>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0  }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+    >
       <style>{`
         .pm-contact-input:focus {
           border-color: rgba(200, 245, 96, 0.4) !important;
@@ -225,6 +230,6 @@ export default function ContactForm() {
           </div>
         </form>
       </div>
-    </>
+    </motion.div>
   );
 }

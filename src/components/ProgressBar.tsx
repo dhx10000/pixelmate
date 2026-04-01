@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { useChatContext } from "@/context/ChatContext";
 import type { ConversationState } from "@/lib/stateMachine";
 
@@ -35,14 +36,14 @@ export default function ProgressBar() {
       aria-label={step.label}
     >
       {/* Label */}
-      <p
+      <motion.p
         className="font-mono text-xs text-text-muted mb-2 tracking-wide"
-        style={{
-          animation: "pb-fadein 0.4s ease both",
-        }}
+        initial={{ opacity: 0, y: -4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut" as const }}
       >
         {step.label}
-      </p>
+      </motion.p>
 
       {/* Track */}
       <div
@@ -64,12 +65,6 @@ export default function ProgressBar() {
         />
       </div>
 
-      <style>{`
-        @keyframes pb-fadein {
-          from { opacity: 0; transform: translateY(-4px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </div>
   );
 }

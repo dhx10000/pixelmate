@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import StarterChips from "./StarterChips";
 import SummaryCard from "./SummaryCard";
 import ContactForm from "./ContactForm";
@@ -40,6 +41,16 @@ function SendIcon() {
   );
 }
 
+// ── Shared entrance animation for every item in the message list ───────────
+//
+// `initial` is only applied on mount — framer-motion does not re-animate
+// elements that are already in the DOM, so scrolling through history is safe.
+
+const msgVariants = {
+  hidden:  { opacity: 0, y: 8 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" as const } },
+};
+
 // ── Message subcomponents ──────────────────────────────────────────────────
 
 function BotAvatar() {
@@ -52,7 +63,12 @@ function BotAvatar() {
 
 function TypingIndicator() {
   return (
-    <div className="flex items-start gap-3">
+    <motion.div
+      className="flex items-start gap-3"
+      variants={msgVariants}
+      initial="hidden"
+      animate="visible"
+    >
       <BotAvatar />
       <div
         className="flex items-center gap-1.5 rounded-2xl rounded-tl-sm px-4 py-3.5"
@@ -70,13 +86,18 @@ function TypingIndicator() {
           />
         ))}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
-function BotMessage({ text }: { text: string }) {
+function BotMessage({ text, isNew }: { text: string; isNew: boolean }) {
   return (
-    <div className="flex items-start gap-3">
+    <motion.div
+      className="flex items-start gap-3"
+      variants={msgVariants}
+      initial={isNew ? "hidden" : false}
+      animate="visible"
+    >
       <BotAvatar />
       <div
         className="rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed text-text-primary"
@@ -84,13 +105,18 @@ function BotMessage({ text }: { text: string }) {
       >
         {text}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
-function UserMessage({ text }: { text: string }) {
+function UserMessage({ text, isNew }: { text: string; isNew: boolean }) {
   return (
-    <div className="flex justify-end">
+    <motion.div
+      className="flex justify-end"
+      variants={msgVariants}
+      initial={isNew ? "hidden" : false}
+      animate="visible"
+    >
       <div
         className="rounded-2xl rounded-tr-sm px-4 py-3 text-sm leading-relaxed font-medium"
         style={{
@@ -102,7 +128,7 @@ function UserMessage({ text }: { text: string }) {
       >
         {text}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -120,6 +146,21 @@ export default function ChatWindow() {
   const fileRef = useRef<FileUploadHandle>(null);
 
   const hasUserMessages = messages.some((m) => m.role === "user");
+
+  // Track how many messages existed when the component first mounted (after
+  // restore). Any message at an index >= this count is truly "new" and should
+  // animate in. Messages that were already present at mount skip the animation
+  // so scrolling through history never re-triggers it.
+  const initialCountRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!isRestoring && initialCountRef.current === null) {
+      initialCountRef.current = messages.length;
+    }
+  }, [isRestoring, messages.length]);
+
+  function isNewMessage(index: number) {
+    return initialCountRef.current === null || index >= initialCountRef.current;
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -208,14 +249,14 @@ export default function ChatWindow() {
             className="flex flex-col gap-4 overflow-y-auto px-5 py-6"
             style={{ maxHeight: 420 }}
           >
-            {messages.map((msg) => {
+            {messages.map((msg, index) => {
               if (msg.role === "bot" && msg.streaming && msg.text === "") {
                 return <TypingIndicator key={msg.id} />;
               }
               return msg.role === "bot" ? (
-                <BotMessage key={msg.id} text={msg.text} />
+                <BotMessage key={msg.id} text={msg.text} isNew={isNewMessage(index)} />
               ) : (
-                <UserMessage key={msg.id} text={msg.text} />
+                <UserMessage key={msg.id} text={msg.text} isNew={isNewMessage(index)} />
               );
             })}
 

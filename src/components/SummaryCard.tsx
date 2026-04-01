@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { useChatContext } from "@/context/ChatContext";
 
 // ── Service label map ──────────────────────────────────────────────────────
@@ -52,13 +53,16 @@ export default function SummaryCard() {
   }
 
   return (
-    <div
+    <motion.div
       className="rounded-2xl p-5 text-sm leading-relaxed"
       style={{
         background: "#18181C",
         border: "1px solid rgba(200,245,96,0.15)",
         marginTop: 4,
       }}
+      initial={{ opacity: 0, y: 12, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0,  scale: 1    }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
     >
       {/* Summary text */}
       <p className="text-text-primary mb-3">
@@ -125,6 +129,6 @@ export default function SummaryCard() {
           Let me clarify something
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }

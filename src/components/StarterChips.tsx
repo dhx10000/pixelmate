@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 const PRIMARY_CHIPS = [
   "I need a website or landing page",
@@ -17,121 +18,125 @@ const SECONDARY_CHIPS = [
   "Start with 3 quick questions",
 ];
 
-const ALL_CHIPS_COUNT = PRIMARY_CHIPS.length + SECONDARY_CHIPS.length;
-
 type Props = {
   onSelect: (text: string) => void;
 };
 
-export default function StarterChips({ onSelect }: Props) {
-  const [visible, setVisible] = useState(false);
-  const [exiting, setExiting] = useState(false);
+// ── Animation variants ─────────────────────────────────────────────────────
 
-  // Trigger entrance on mount
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setVisible(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.05, delayChildren: 0.05 } },
+  exit:   { transition: { staggerChildren: 0.03, staggerDirection: -1 } },
+};
+
+const chipVariants = {
+  hidden:  { opacity: 0, scale: 0.94, y: 6 },
+  visible: { opacity: 1, scale: 1,    y: 0, transition: { duration: 0.25, ease: "easeOut" as const } },
+  exit:    { opacity: 0, scale: 0.96, y: 4, transition: { duration: 0.18, ease: "easeIn"  as const } },
+};
+
+const labelVariants = {
+  hidden:  { opacity: 0 },
+  visible: { opacity: 1, transition: { duration: 0.3, delay: 0.04 } },
+  exit:    { opacity: 0, transition: { duration: 0.15 } },
+};
+
+// ── Component ──────────────────────────────────────────────────────────────
+
+export default function StarterChips({ onSelect }: Props) {
+  const [exiting, setExiting] = useState(false);
+  const [gone, setGone] = useState(false);
 
   function handleClick(text: string) {
     if (exiting) return;
     setExiting(true);
-    // Wait for exit animation before sending the message
-    setTimeout(() => onSelect(text), 280);
+    setTimeout(() => {
+      setGone(true);
+      onSelect(text);
+    }, 260);
   }
 
-  function chipStyle(index: number): React.CSSProperties {
-    const delay = exiting ? 0 : index * 50;
-    const opacity = exiting ? 0 : visible ? 1 : 0;
-    const translateY = exiting ? 6 : visible ? 0 : 10;
-    return {
-      opacity,
-      transform: `translateY(${translateY}px)`,
-      transition: `opacity 0.25s ease ${delay}ms, transform 0.25s ease ${delay}ms`,
-    };
-  }
-
-  // For the label, stagger after all chips
-  const labelStyle: React.CSSProperties = {
-    opacity: exiting ? 0 : visible ? 1 : 0,
-    transition: `opacity 0.25s ease ${exiting ? 0 : ALL_CHIPS_COUNT * 10}ms`,
-  };
+  if (gone) return null;
 
   return (
-    <div className="mt-3 ml-11">
-      {/* Label */}
-      <p
-        className="font-mono text-xs text-text-muted mb-3 tracking-wide"
-        style={labelStyle}
-      >
-        Where shall we start?
-      </p>
-
-      {/* Primary chips */}
-      <div className="flex flex-wrap gap-2 mb-3">
-        {PRIMARY_CHIPS.map((label, i) => (
-          <button
-            key={label}
-            type="button"
-            onClick={() => handleClick(label)}
-            className="group rounded-full px-3.5 py-1.5 text-xs text-text-secondary transition-colors"
-            style={{
-              ...chipStyle(i),
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.08)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(200,245,96,0.07)";
-              e.currentTarget.style.borderColor = "rgba(200,245,96,0.2)";
-              e.currentTarget.style.color = "#E8E4DD";
-              e.currentTarget.style.transform = chipStyle(i).transform
-                ? `translateY(${parseFloat((chipStyle(i).transform as string).replace("translateY(", "")) - 1}px)`
-                : "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "rgba(255,255,255,0.04)";
-              e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";
-              e.currentTarget.style.color = "";
-              e.currentTarget.style.transform = chipStyle(i).transform as string;
-            }}
+    <AnimatePresence>
+      {!gone && (
+        <motion.div
+          className="mt-3 ml-11"
+          variants={containerVariants}
+          initial="hidden"
+          animate={exiting ? "exit" : "visible"}
+        >
+          {/* Label */}
+          <motion.p
+            className="font-mono text-xs text-text-muted mb-3 tracking-wide"
+            variants={labelVariants}
           >
-            {label}
-          </button>
-        ))}
-      </div>
+            Where shall we start?
+          </motion.p>
 
-      {/* Secondary chips (dashed border) */}
-      <div className="flex flex-wrap gap-2">
-        {SECONDARY_CHIPS.map((label, i) => (
-          <button
-            key={label}
-            type="button"
-            onClick={() => handleClick(label)}
-            className="rounded-full px-3.5 py-1.5 text-xs text-text-muted transition-colors"
-            style={{
-              ...chipStyle(PRIMARY_CHIPS.length + i),
-              background: "transparent",
-              border: "1px dashed rgba(255,255,255,0.15)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(200,245,96,0.07)";
-              e.currentTarget.style.borderColor = "rgba(200,245,96,0.3)";
-              e.currentTarget.style.color = "#E8E4DD";
-              e.currentTarget.style.transform = "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)";
-              e.currentTarget.style.color = "";
-              e.currentTarget.style.transform = chipStyle(
-                PRIMARY_CHIPS.length + i
-              ).transform as string;
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-    </div>
+          {/* Primary chips */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            {PRIMARY_CHIPS.map((label) => (
+              <motion.button
+                key={label}
+                type="button"
+                onClick={() => handleClick(label)}
+                variants={chipVariants}
+                whileHover={{ y: -1 }}
+                className="rounded-full px-3.5 py-1.5 text-xs text-text-secondary"
+                style={{
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(200,245,96,0.07)";
+                  e.currentTarget.style.borderColor = "rgba(200,245,96,0.2)";
+                  e.currentTarget.style.color = "#E8E4DD";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";
+                  e.currentTarget.style.color = "";
+                }}
+              >
+                {label}
+              </motion.button>
+            ))}
+          </div>
+
+          {/* Secondary chips (dashed border) */}
+          <div className="flex flex-wrap gap-2">
+            {SECONDARY_CHIPS.map((label) => (
+              <motion.button
+                key={label}
+                type="button"
+                onClick={() => handleClick(label)}
+                variants={chipVariants}
+                whileHover={{ y: -1 }}
+                className="rounded-full px-3.5 py-1.5 text-xs text-text-muted"
+                style={{
+                  background: "transparent",
+                  border: "1px dashed rgba(255,255,255,0.15)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(200,245,96,0.07)";
+                  e.currentTarget.style.borderColor = "rgba(200,245,96,0.3)";
+                  e.currentTarget.style.color = "#E8E4DD";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)";
+                  e.currentTarget.style.color = "";
+                }}
+              >
+                {label}
+              </motion.button>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

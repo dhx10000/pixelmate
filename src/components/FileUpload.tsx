@@ -6,6 +6,7 @@ import {
   useImperativeHandle,
   useState,
 } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useDropzone } from "react-dropzone";
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -115,13 +116,17 @@ function FileCard({
   onRemove: () => void;
 }) {
   return (
-    <div
+    <motion.div
       className="flex items-center gap-2.5 rounded-xl px-3 py-2"
       style={{
         background: "#18181C",
         border: "1px solid rgba(255,255,255,0.06)",
         minWidth: 0,
       }}
+      initial={{ opacity: 0, scale: 0.88, y: 4 }}
+      animate={{ opacity: 1, scale: 1,    y: 0 }}
+      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
+      transition={{ duration: 0.22, ease: "easeOut" as const }}
     >
       <FileIcon type={file.type} />
       <div className="flex min-w-0 flex-col">
@@ -143,7 +148,7 @@ function FileCard({
       >
         <RemoveIcon />
       </button>
-    </div>
+    </motion.div>
   );
 }
 
@@ -159,11 +164,13 @@ export function FilePreviewList({
   if (files.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2 px-5 pt-3">
-      {files.map((file, i) => (
-        <FileCard key={`${file.name}-${i}`} file={file} onRemove={() => onRemove(i)} />
-      ))}
-    </div>
+    <AnimatePresence initial={false}>
+      <div className="flex flex-wrap gap-2 px-5 pt-3">
+        {files.map((file, i) => (
+          <FileCard key={`${file.name}-${file.size}`} file={file} onRemove={() => onRemove(i)} />
+        ))}
+      </div>
+    </AnimatePresence>
   );
 }
 
@@ -189,7 +196,7 @@ export const FileDropZone = forwardRef<FileUploadHandle, FileDropZoneProps>(
     const [rejections, setRejections] = useState<string[]>([]);
 
     const onDrop = useCallback(
-      (accepted: File[], rejected: { file: File; errors: { message: string }[] }[]) => {
+      (accepted: File[], rejected: { file: File; errors: readonly { message: string }[] }[]) => {
         if (accepted.length > 0) onFiles(accepted);
         if (rejected.length > 0) {
           const msgs = rejected.map(({ file, errors }) => {

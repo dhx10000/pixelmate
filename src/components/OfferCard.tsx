@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { useChatContext } from "@/context/ChatContext";
 
 // ── Section parser ─────────────────────────────────────────────────────────
@@ -177,16 +178,19 @@ export default function OfferCard() {
   // Deferred tier: simple message, no structured card
   if (offer.tier === "deferred") {
     return (
-      <div
+      <motion.div
         className="rounded-2xl px-5 py-4 text-sm leading-relaxed text-text-secondary"
         style={{
           background: "#18181C",
           border: "1px solid rgba(255,255,255,0.07)",
           marginTop: 4,
         }}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0  }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
       >
         {offer.text}
-      </div>
+      </motion.div>
     );
   }
 
