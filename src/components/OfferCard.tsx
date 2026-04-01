@@ -165,7 +165,7 @@ function Divider() {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function OfferCard() {
-  const { agentOutputs, contactData, sessionId, forceState } = useChatContext();
+  const { agentOutputs, contactData, fileSummaries, messages, sessionId, forceState } = useChatContext();
   const offer = agentOutputs.offer;
 
   const [submitting, setSubmitting] = useState(false);
@@ -199,22 +199,32 @@ export default function OfferCard() {
     setSubmitError(null);
 
     try {
-      const res = await fetch("/api/crm/submit", {
+      // Build the conversationHistory in the format the packager expects
+      const conversationHistory = messages
+        .filter((m) => m.id !== 0 && !m.streaming)
+        .map((m) => ({
+          role: (m.role === "bot" ? "assistant" : "user") as "user" | "assistant",
+          content: m.text,
+        }));
+
+      const res = await fetch("/api/crm/write", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId,
-          submittedAt: new Date().toISOString(),
           contact: contactData ?? {},
-          brief: agentOutputs.brief ?? {},
-          services: agentOutputs.services ?? { matches: [], top_match: null },
+          brief: agentOutputs.brief,
+          serviceMatches: agentOutputs.services,
+          validation: agentOutputs.validation,
           offer,
+          fileSummaries,
+          conversationHistory,
         }),
       });
 
       if (!res.ok) {
-        const { error } = await res.json();
-        throw new Error(error ?? "Submission failed");
+        const body = await res.json();
+        throw new Error(body.error ?? "Submission failed");
       }
 
       setSubmitted(true);

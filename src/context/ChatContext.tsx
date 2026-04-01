@@ -40,6 +40,7 @@ type ChatContextValue = {
   currentState: ConversationState;
   agentOutputs: AgentOutputs;
   contactData: ContactData | null;
+  fileSummaries: string[];
   messages: Message[];
   isStreaming: boolean;
   showChips: boolean;
@@ -326,6 +327,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         currentState,
         agentOutputs,
         contactData,
+        fileSummaries,
         messages,
         isStreaming,
         showChips,
