@@ -207,7 +207,8 @@ export default function OfferCard() {
           content: m.text,
         }));
 
-      const res = await fetch("/api/crm/write", {
+      // ── Step 1: write to CRM + Supabase ─────────────────────────────────
+      const writeRes = await fetch("/api/crm/write", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -222,16 +223,28 @@ export default function OfferCard() {
         }),
       });
 
-      if (!res.ok) {
-        const body = await res.json();
-        throw new Error(body.error ?? "Submission failed");
+      if (!writeRes.ok) {
+        const body = await writeRes.json();
+        throw new Error(body.error ?? "write_failed");
       }
+
+      const { lead_id: leadId, payload: crmPayload } = await writeRes.json();
+
+      // ── Step 2: notify PIXEL team — fire-and-forget, never blocks UX ────
+      fetch("/api/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payload: crmPayload, leadId }),
+      }).catch((err) => console.error("[OfferCard] notify failed:", err));
 
       setSubmitted(true);
       forceState("DONE");
     } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
       setSubmitError(
-        err instanceof Error ? err.message : "Something went wrong — please try again."
+        msg && msg !== "write_failed"
+          ? msg
+          : "Something went wrong saving your brief. Please try again."
       );
     } finally {
       setSubmitting(false);

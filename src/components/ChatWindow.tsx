@@ -259,7 +259,7 @@ export default function ChatWindow() {
               <VoiceInput
                 ref={voiceRef}
                 onTranscript={handleTranscript}
-                disabled={isStreaming || isRestoring}
+                disabled={isStreaming || isRestoring || currentState === "DONE"}
               />
 
               <textarea
@@ -268,13 +268,15 @@ export default function ChatWindow() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={
-                  isRestoring
-                    ? "Restoring your conversation…"
-                    : isStreaming
-                      ? "PixelMate is thinking…"
-                      : "Tell me about your challenge..."
+                  currentState === "DONE"
+                    ? "This conversation is complete."
+                    : isRestoring
+                      ? "Restoring your conversation…"
+                      : isStreaming
+                        ? "PixelMate is thinking…"
+                        : "Tell me about your challenge..."
                 }
-                disabled={isStreaming || isRestoring}
+                disabled={isStreaming || isRestoring || currentState === "DONE"}
                 rows={1}
                 className="flex-1 resize-none bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none leading-relaxed py-1 disabled:cursor-not-allowed"
                 style={{ maxHeight: 120 }}
@@ -311,7 +313,7 @@ export default function ChatWindow() {
                 type="button"
                 aria-label="Send message"
                 onClick={handleSend}
-                disabled={!input.trim() || isStreaming || isRestoring}
+                disabled={!input.trim() || isStreaming || isRestoring || currentState === "DONE"}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-bg-deep transition-opacity disabled:opacity-30"
               >
                 <SendIcon />
