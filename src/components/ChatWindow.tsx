@@ -109,7 +109,7 @@ function UserMessage({ text }: { text: string }) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function ChatWindow() {
-  const { messages, isStreaming, currentState, agentOutputs, showChips, sendMessage, dismissChips, analyzeFiles } =
+  const { messages, isStreaming, isRestoring, currentState, agentOutputs, showChips, sendMessage, dismissChips, analyzeFiles } =
     useChatContext();
 
   const [input, setInput] = useState("");
@@ -259,7 +259,7 @@ export default function ChatWindow() {
               <VoiceInput
                 ref={voiceRef}
                 onTranscript={handleTranscript}
-                disabled={isStreaming}
+                disabled={isStreaming || isRestoring}
               />
 
               <textarea
@@ -268,11 +268,13 @@ export default function ChatWindow() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={
-                  isStreaming
-                    ? "PixelMate is thinking…"
-                    : "Tell me about your challenge..."
+                  isRestoring
+                    ? "Restoring your conversation…"
+                    : isStreaming
+                      ? "PixelMate is thinking…"
+                      : "Tell me about your challenge..."
                 }
-                disabled={isStreaming}
+                disabled={isStreaming || isRestoring}
                 rows={1}
                 className="flex-1 resize-none bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none leading-relaxed py-1 disabled:cursor-not-allowed"
                 style={{ maxHeight: 120 }}
@@ -309,7 +311,7 @@ export default function ChatWindow() {
                 type="button"
                 aria-label="Send message"
                 onClick={handleSend}
-                disabled={!input.trim() || isStreaming}
+                disabled={!input.trim() || isStreaming || isRestoring}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-bg-deep transition-opacity disabled:opacity-30"
               >
                 <SendIcon />

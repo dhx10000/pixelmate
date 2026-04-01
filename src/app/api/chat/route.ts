@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { supabase } from "@/lib/supabase";
 
 export const maxDuration = 60;
 import {
@@ -226,6 +227,7 @@ export async function POST(request: Request) {
   let currentState: ConversationState;
   let incomingAgents: AgentOutputs;
   let fileSummaries: string[];
+  let sessionId: string;
 
   try {
     const body = await request.json();
@@ -233,6 +235,7 @@ export async function POST(request: Request) {
     currentState = (body.currentState as ConversationState) ?? "WELCOME";
     incomingAgents = (body.agentOutputs as AgentOutputs) ?? {};
     fileSummaries = Array.isArray(body.fileSummaries) ? body.fileSummaries : [];
+    sessionId = typeof body.sessionId === "string" ? body.sessionId : crypto.randomUUID();
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return Response.json(
@@ -263,6 +266,8 @@ export async function POST(request: Request) {
         controller.enqueue(encoder.encode(`data: ${data}\n\n`));
       }
 
+      let botReply = "";
+
       try {
         const anthropicStream = client.messages.stream({
           model: "claude-sonnet-4-20250514",
@@ -276,6 +281,7 @@ export async function POST(request: Request) {
             event.type === "content_block_delta" &&
             event.delta.type === "text_delta"
           ) {
+            botReply += event.delta.text;
             send(JSON.stringify({ text: event.delta.text }));
           }
         }
@@ -284,6 +290,28 @@ export async function POST(request: Request) {
         send(JSON.stringify({ state: nextState }));
         send(JSON.stringify({ agents: agentOutputs }));
         send("[DONE]");
+
+        // Upsert session after a successful exchange — fire-and-forget,
+        // never blocks or errors the stream response.
+        const fullHistory: ChatMessage[] = [
+          ...messages,
+          { role: "assistant", content: botReply },
+        ];
+        supabase
+          .from("sessions")
+          .upsert(
+            {
+              id: sessionId,
+              current_state: nextState,
+              conversation_history: fullHistory,
+              agent_outputs: agentOutputs,
+              file_summaries: fileSummaries,
+            },
+            { onConflict: "id" }
+          )
+          .then(({ error }) => {
+            if (error) console.error("[chat] session upsert failed:", error.message);
+          });
       } catch (err) {
         const message =
           err instanceof Anthropic.APIError

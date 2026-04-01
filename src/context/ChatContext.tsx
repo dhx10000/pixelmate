@@ -43,6 +43,7 @@ type ChatContextValue = {
   fileSummaries: string[];
   messages: Message[];
   isStreaming: boolean;
+  isRestoring: boolean;
   showChips: boolean;
   dismissChips: () => void;
   sendMessage: (text: string) => void;
@@ -99,13 +100,16 @@ const WELCOME: Message = {
 
 // ── Context ────────────────────────────────────────────────────────────────
 
+const LS_KEY = "pixelmate_session_id";
+
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
-  const [sessionId] = useState<string>(() => crypto.randomUUID());
+  const [sessionId, setSessionId] = useState<string>(() => crypto.randomUUID());
   const [currentState, setCurrentState] = useState<ConversationState>("WELCOME");
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(true);
   const [showChips, setShowChips] = useState(true);
   const [agentOutputs, setAgentOutputs] = useState<AgentOutputs>({});
   const [fileSummaries, setFileSummaries] = useState<string[]>([]);
@@ -132,6 +136,75 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     fileSummariesRef.current = fileSummaries;
   }, [fileSummaries]);
+
+  // ── Session restore on mount ───────────────────────────────────────────────
+  //
+  // 1. Read sessionId from localStorage.
+  // 2. Fetch that session from Supabase via the restore route.
+  // 3. If found and not DONE, hydrate all state from it.
+  // 4. If not found / DONE / any error, generate a fresh session and persist it.
+
+  useEffect(() => {
+    async function restoreOrCreate() {
+      const stored = localStorage.getItem(LS_KEY);
+
+      if (stored) {
+        try {
+          const res = await fetch(`/api/session/${stored}`);
+          if (res.ok) {
+            const data = await res.json();
+            // Don't restore completed sessions — start fresh
+            if (data.current_state !== "DONE") {
+              const restoredMessages: Message[] = Array.isArray(data.conversation_history)
+                ? [
+                    WELCOME,
+                    ...data.conversation_history
+                      .filter((m: { role: string }) => m.role !== "system")
+                      .map(
+                        (m: { role: string; content: string }, i: number) => ({
+                          id: i + 1,
+                          role: m.role === "assistant" ? "bot" : "user",
+                          text: m.content,
+                        } as Message)
+                      ),
+                  ]
+                : [WELCOME];
+
+              setSessionId(stored);
+              setMessages(restoredMessages);
+              setCurrentState(data.current_state as ConversationState);
+              setAgentOutputs((data.agent_outputs as AgentOutputs) ?? {});
+              setFileSummaries(
+                Array.isArray(data.file_summaries) ? data.file_summaries : []
+              );
+              // Hide chips if there's real conversation history
+              if (restoredMessages.length > 1) setShowChips(false);
+              setIsRestoring(false);
+              return;
+            }
+          }
+        } catch {
+          // Network error or bad JSON — fall through to fresh session
+        }
+      }
+
+      // Fresh session — persist the new id
+      const newId = crypto.randomUUID();
+      setSessionId(newId);
+      localStorage.setItem(LS_KEY, newId);
+      setIsRestoring(false);
+    }
+
+    restoreOrCreate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist sessionId to localStorage whenever it changes
+  useEffect(() => {
+    if (!isRestoring) {
+      localStorage.setItem(LS_KEY, sessionId);
+    }
+  }, [sessionId, isRestoring]);
 
   const streamBotReply = useCallback(
     async (history: Message[], sid: string) => {
@@ -330,6 +403,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         fileSummaries,
         messages,
         isStreaming,
+        isRestoring,
         showChips,
         sendMessage,
         dismissChips,
